@@ -26,7 +26,7 @@ message PutRequest {
 
 
 message CreateTableRequest {
-
+    string name = 1;
 }
 
 message CreateTableResponse {
@@ -34,7 +34,7 @@ message CreateTableResponse {
 }
 
 message ListTablesResponse {
-
+    repeated string tables = 1;
 }
 
 message GetRequest {

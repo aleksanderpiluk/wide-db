@@ -1,11 +1,13 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::{net::{IpAddr, Ipv4Addr, SocketAddr}, sync::Arc};
 
 use tonic::{transport::Server, Request, Response, Status};
-use wdb_core::Module;
+use wdb_core::{Module, StorageEngine};
 use wdb_grpc::wdb_grpc::{wide_db_server::{WideDb, WideDbServer}, GetRequest, GetResponse, CreateTableRequest, ListTablesResponse, FILE_DESCRIPTOR_SET};
 
-#[derive(Debug, Default)]
-pub struct WideDBImpl {}
+#[derive(Debug)]
+pub struct WideDBImpl {
+    storage_engine: Arc<dyn StorageEngine>
+}
 
 #[tonic::async_trait]
 impl WideDb for WideDBImpl {
@@ -14,18 +16,24 @@ impl WideDb for WideDBImpl {
     }
 
     async fn create_table(&self, request: Request<CreateTableRequest>) -> Result<Response<()>, Status> {
-        todo!();
+        let reqData = request.into_inner();
+        let tableName = reqData.name;
+        self.storage_engine.create_table(&tableName);
+
+        Ok(Response::new(()))
     }
 
     async fn list_tables(&self, request: Request<()>) -> Result<Response<ListTablesResponse>, Status> {
-        todo!();
+        let names = self.storage_engine.list_tables();
+
+        Ok(Response::new(ListTablesResponse { tables: names }))
     }
 }
 
 pub struct GrpcServer {}
 
 impl Module for GrpcServer {
-    fn init(&self) {
+    fn init(&self, storage_engine: Arc<dyn StorageEngine>) {
         println!("GrpcServer is starting...");
         const DEFAULT_PORT: u16 = 50051;
 
@@ -37,7 +45,7 @@ impl Module for GrpcServer {
             .unwrap();
 
             Server::builder()
-                .add_service(WideDbServer::new(WideDBImpl::default()))
+                .add_service(WideDbServer::new(WideDBImpl{ storage_engine: storage_engine }))
                 .add_service(service)
                 .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DEFAULT_PORT))
                 .await.unwrap();

@@ -1,12 +1,10 @@
 use wdb_core::FS;
 
-pub struct DefaultFSController {
-
-}
+pub struct DefaultFSController {}
 
 impl DefaultFSController {
     pub fn init() -> DefaultFSController{
-        DefaultFSController {  }
+        DefaultFSController { }
     }
 }
 
