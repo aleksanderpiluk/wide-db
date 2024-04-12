@@ -1,20 +1,7 @@
-use std::{fmt::Debug, sync::Arc};
-
 pub mod app_controller;
-
-pub trait StorageEngine: Sync + Send + Debug {
-    fn create_table(&self, name: &String);
-    fn list_tables(&self) -> Vec<String>;
-}
-
-pub trait FS {
-    
-}
-
-pub trait Module {
-    fn init(&self, storage_engine: Arc<dyn StorageEngine>);
-    fn destoy(&self);
-}
+pub mod command;
+pub mod module;
+pub mod storage_engine;
 
 // #[cfg(test)]
 // mod tests {

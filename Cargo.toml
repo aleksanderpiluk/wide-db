@@ -1,5 +1,5 @@
 [workspace]
 
 members = [
-    "wdb-core", "wdb-engine-default", "wdb-fs-default", "wdb-grpc", "wdb-server",
+    "wdb-core", "wdb-engine-default", "wdb-grpc", "wdb-server",
 ]

@@ -10,6 +10,5 @@ tokio = { version = "1.36.0", features = ["full"] }
 tonic = "0.11.0"
 wdb-grpc = { path = "../wdb-grpc" }
 wdb-core = { path = "../wdb-core" }
-wdb-fs-default = { path = "../wdb-fs-default"}
 wdb-engine-default = { path = "../wdb-engine-default" }
 tonic-reflection = "0.11.0"

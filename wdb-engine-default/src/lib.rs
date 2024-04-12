@@ -1,86 +1,109 @@
-mod storage_paths;
+mod utils;
+mod table;
+mod fs_controller;
 
-use std::{collections::HashMap, fs::{create_dir, read_dir}, sync::{Arc, RwLock}};
+use std::{collections::HashMap, fs::{create_dir, read_dir}, hash::Hash, sync::{Arc, RwLock}};
 
-use storage_paths::StoragePaths;
-use wdb_core::StorageEngine;
-
-#[derive(Debug)]
-struct TableMetadata {
-    name: String,
-    id: u32,
-}
+use fs_controller::{structs::TableMetadata, FSController};
+use utils::table_id::TableIdGen;
+use wdb_core::storage_engine::StorageEngine;
 
 #[derive(Debug)]
 pub struct DefaultStorageEngine {
-    tables: Arc<RwLock<HashMap<String, TableMetadata>>>,
+    // tables: Arc<RwLock<HashMap<String, TableMetadata>>>,
+    tables: RwLock<Vec<Arc<TableMetadata>>>,
+    id_mapping: HashMap<String, Arc<TableMetadata>>,
+    name_mapping: HashMap<String, Arc<TableMetadata>>,
 }
 
 impl DefaultStorageEngine {
     pub fn init() -> DefaultStorageEngine {
-        let p = StoragePaths::base();
-        if !p.is_dir() {
-            if p.exists() {
-                panic!("Fatal error: {} exists but it's not a directory.", p.display());
+        if !FSController::structure_exists() {
+            FSController::create_initial_structure();
+
+            DefaultStorageEngine {
+                tables: RwLock::new(vec![]),
+                id_mapping: HashMap::new(),
+                name_mapping: HashMap::new(),
+            }
+        } else {
+            let root_file = FSController::read_root_file();
+            println!("{:?}", root_file);
+            let metadata = FSController::read_tables_metadata(&root_file.tables).unwrap();   
+
+            let mut tables: Vec<Arc<TableMetadata>> = vec![];
+            let mut id_mapping = HashMap::<String, Arc<TableMetadata>>::with_capacity(metadata.len());
+            let mut name_mapping = HashMap::<String, Arc<TableMetadata>>::with_capacity(metadata.len());
+
+            for item in metadata {
+                let arc = Arc::new(item);
+                id_mapping.insert(arc.id.clone(), arc.clone());
+                name_mapping.insert(arc.name.clone(), arc.clone());
+                tables.push(arc)
             }
 
-            create_dir(p).unwrap();
-            DefaultStorageEngine::create_base_storage_structure();
-        }
-
-        DefaultStorageEngine::eventual_structure_recovery();
-
-        DefaultStorageEngine::read_tables_metadata();
-
-        let tables = Arc::new(RwLock::new(HashMap::<String, TableMetadata>::new()));
-
-        DefaultStorageEngine { tables: tables }
-    }
-
-    fn create_base_storage_structure() {
-        create_dir(StoragePaths::table_metadata()).unwrap();
-        create_dir(StoragePaths::table_data()).unwrap();
-    }
-
-    fn eventual_structure_recovery() {
-        let p = StoragePaths::table_metadata();
-        if !p.exists() {
-            create_dir(p).unwrap();
-        }
-
-        let p = StoragePaths::table_data();
-        if !p.exists() {
-            create_dir(p).unwrap();
+            DefaultStorageEngine {
+                tables: RwLock::new(tables),
+                id_mapping: id_mapping,
+                name_mapping: name_mapping,
+            }
         }
     }
 
-    fn read_tables_metadata() {
-        // for entry in read_dir(StoragePaths::table_metadata())? {
-            
-        // }
-    }
 }
 
 impl StorageEngine for DefaultStorageEngine {
-    fn create_table(&self, name: &String) {
+    fn create_table(&self, name: &String, families: &Vec<String>) -> Result<(), &'static str>{
+        let mut tables = self.tables.write().unwrap();
+        let exists = self.table_with_name_exists(name);
+        if exists {
+            return Err("Table with this name already exists.");
+        }
+
+
         let name = name.clone();
-        self.tables.write().unwrap().entry(name.clone()).or_insert(TableMetadata {
-            id: 0,
-            name: name,
-        });
+        let id = TableIdGen::gen_id();
+
+        let metadata = TableMetadata::new(id, name, families);
+        FSController::create_table_initial_files(&metadata);
+
+        tables.push(Arc::new(metadata));
+        FSController::update_root_file_from_metadata(tables.clone());
+        
+        Ok(())
+    }
+
+    fn add_table_family(&self, table_name: &String, family_name: &String) -> Result<(), &'static str> {
+        todo!()
+        // let mut tables = self.tables.write().unwrap();
+        
+        // let table = self.name_mapping.get(table_name.clone().as_str()).ok_or("Table with this name not exists.")?;
+        
+        // if table.families.get(family_name).is_some() {
+        //     return Err("Family with this name already exists.");
+        // }
+
+        // table.families.insert(family_name.clone());
+        // FSController::update_root_file_from_metadata(tables.clone());
+        // Ok(())
     }
 
     fn list_tables(&self) -> Vec<String> {
-        let tables = self.tables.read().unwrap();
-        let iter = tables.iter();
-        let mut result: Vec<String> = vec![];
+        todo!()
+        // let tables = self.tables.read().unwrap();
+        // let iter = tables.iter();
+        // let mut result: Vec<String> = vec![];
         
-        for item in iter {
-            let (name, _) = item;
-            result.push(name.clone());
-        }
+        // for item in iter {
+        //     let (name, _) = item;
+        //     result.push(name.clone());
+        // }
 
-        return result;
+        // return result;
+    }
+
+    fn table_with_name_exists(&self, name: &String) -> bool {
+        self.name_mapping.contains_key(name)
     }
 }
 

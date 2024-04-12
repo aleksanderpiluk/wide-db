@@ -1,39 +1,74 @@
 use std::{net::{IpAddr, Ipv4Addr, SocketAddr}, sync::Arc};
 
+use tokio::task::JoinError;
 use tonic::{transport::Server, Request, Response, Status};
-use wdb_core::{Module, StorageEngine};
-use wdb_grpc::wdb_grpc::{wide_db_server::{WideDb, WideDbServer}, GetRequest, GetResponse, CreateTableRequest, ListTablesResponse, FILE_DESCRIPTOR_SET};
+use wdb_core::{command::{command_error::CommandError, command_executor::CommandExecutor, commands::create_table::CommandCreateTable}, module::Module};
+use wdb_grpc::wdb_grpc::{wide_db_server::{WideDb, WideDbServer}, CreateTableRequest, DeleteRequest, GetRowRequest, ListTablesResponse, PutRowRequest, FILE_DESCRIPTOR_SET};
 
 #[derive(Debug)]
 pub struct WideDBImpl {
-    storage_engine: Arc<dyn StorageEngine>
+    cmd_exec: Arc<CommandExecutor>,
 }
 
 #[tonic::async_trait]
 impl WideDb for WideDBImpl {
-    async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
-        todo!();
-    }
 
     async fn create_table(&self, request: Request<CreateTableRequest>) -> Result<Response<()>, Status> {
-        let reqData = request.into_inner();
-        let tableName = reqData.name;
-        self.storage_engine.create_table(&tableName);
+        let request = request.into_inner();
+        let result = self.cmd_exec.exec_command(CommandCreateTable {
+            name: request.name,
+            families: request.families,
+        }).await;
 
+        let result = WideDBImpl::handle_cmd_exec_err(result)?;
+
+        // TODO: It's not always invalid argument error...
         Ok(Response::new(()))
     }
 
     async fn list_tables(&self, request: Request<()>) -> Result<Response<ListTablesResponse>, Status> {
-        let names = self.storage_engine.list_tables();
+        todo!()
+        // let names = self.storage_engine.list_tables();
 
-        Ok(Response::new(ListTablesResponse { tables: names }))
+        // Ok(Response::new(ListTablesResponse { tables: names }))
+    }
+
+    async fn put_row(&self, request: Request<PutRowRequest>) -> Result<Response<()>, Status> {
+        panic!();
+    }
+
+    async fn delete(&self, request: Request<DeleteRequest>) -> Result<Response<()>, Status> {
+        panic!();
+    }
+
+    async fn get_row(&self, request: Request<GetRowRequest>) -> Result<Response<()>, Status> {
+        panic!();
+    }
+}
+
+impl WideDBImpl {
+    fn handle_cmd_exec_err<T>(result: Result<Result<T, CommandError>, JoinError>) -> Result<T, Status> {
+        match result {
+            Ok(r) => {
+                match r {
+                    Ok(val) => Ok(val),
+                    Err(err) => {
+                        match err {
+                            CommandError::InputValidadationError(str) => Err(Status::invalid_argument(str)),
+                            CommandError::ExecutionError(str) => Err(Status::failed_precondition(str)),
+                        }
+                    }
+                }
+            },
+            Err(err) => Err(Status::internal(err.to_string())),
+        }
     }
 }
 
 pub struct GrpcServer {}
 
 impl Module for GrpcServer {
-    fn init(&self, storage_engine: Arc<dyn StorageEngine>) {
+    fn init(&self, cmd_exec: Arc<CommandExecutor>) {
         println!("GrpcServer is starting...");
         const DEFAULT_PORT: u16 = 50051;
 
@@ -45,7 +80,7 @@ impl Module for GrpcServer {
             .unwrap();
 
             Server::builder()
-                .add_service(WideDbServer::new(WideDBImpl{ storage_engine: storage_engine }))
+                .add_service(WideDbServer::new(WideDBImpl{ cmd_exec }))
                 .add_service(service)
                 .serve(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DEFAULT_PORT))
                 .await.unwrap();

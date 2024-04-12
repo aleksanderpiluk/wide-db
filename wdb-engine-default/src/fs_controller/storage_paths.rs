@@ -7,8 +7,12 @@ impl StoragePaths {
         Path::new("/usr/local/wdb/").to_path_buf()
     }
 
-    pub fn table_metadata() -> PathBuf {
-        StoragePaths::base().join("table_metadata/")
+    pub fn root_file() -> PathBuf {
+        StoragePaths::base().join(".db")        
+    }
+
+    pub fn table_metadata(id: &String) -> PathBuf {
+        StoragePaths::base().join(id).join(".meta")
     }
 
     pub fn table_data() -> PathBuf {

@@ -1,24 +1,28 @@
 use std::sync::Arc;
 
-use crate::{Module, StorageEngine, FS};
+use crate::{command::command_executor::CommandExecutor, module::Module, storage_engine::StorageEngine};
 
 pub struct AppController {
+    cmd_exec: Arc<CommandExecutor>,
     storage_engine: Arc<dyn StorageEngine>,
-    fs: Box<dyn FS>,
     modules: Vec<Box<dyn Module>>
 } 
 
 impl AppController {
-    pub fn init(fs: Box<dyn FS>, storageEngine: Arc<dyn StorageEngine>) -> AppController {
+    pub fn init(storage_engine: Arc<dyn StorageEngine>) -> AppController {
+        let cmd_exec = Arc::new(CommandExecutor {
+            storage_engine: storage_engine.clone(),
+        });
+
         AppController { 
-            storage_engine: storageEngine, 
-            fs: fs, 
+            cmd_exec,
+            storage_engine, 
             modules: vec![] 
         }
     }
 
     pub fn add_module(&mut self, module: Box<dyn Module>) {
-        module.init(self.storage_engine.clone());
+        module.init(self.cmd_exec.clone());
         self.modules.push(module);
     }
 }

@@ -12,46 +12,64 @@ message Value {
     uint64 timestamp = 2;
 }
 
-message ColumnValues {
+message PutValues {
     Column column = 1;
     repeated Value values = 2;
 }
 
-message PutRequest {
-    string table = 1;
-    string row = 2;
-    repeated ColumnValues values = 3;
+message DeleteValues {
+    Column column = 1;
+    repeated uint64 timestamps = 2;
+}
+
+message GetValues {
+    Column column = 1;
+    repeated uint64 timestamps = 2;
 }
 
 
 
 message CreateTableRequest {
     string name = 1;
+    repeated string families = 2;
 }
 
-message CreateTableResponse {
+message PutRowRequest {
+    string table = 1;
+    string row = 2;
+    repeated PutValues values = 3;
+}
 
+message DeleteRequest {
+    string table = 1;
+    string row = 2;
+    repeated DeleteValues values = 3;
+}
+
+message GetRowRequest {
+    string table = 1;
+    string row = 2;
+    repeated GetValues values = 3;
+}
+
+
+
+message TableInfoResponse {
+    uint32 id = 1;
+    string name = 2;
+    repeated string families = 3;
 }
 
 message ListTablesResponse {
     repeated string tables = 1;
 }
 
-message GetRequest {
-    string table = 1;
-    string row = 2;
-    string column_family = 3;
-    string column_name = 4;
-    uint64 timestamp = 5;
-}
 
-message GetResponse {
-    bool found = 1;
-}
 
 service WideDB {
     rpc CreateTable(CreateTableRequest) returns (google.protobuf.Empty);
     rpc ListTables(google.protobuf.Empty) returns (ListTablesResponse);
-
-    rpc Get(GetRequest) returns (GetResponse);
+    rpc PutRow(PutRowRequest) returns (google.protobuf.Empty);
+    rpc Delete(DeleteRequest) returns (google.protobuf.Empty);
+    rpc GetRow(GetRowRequest) returns (google.protobuf.Empty);
 }
