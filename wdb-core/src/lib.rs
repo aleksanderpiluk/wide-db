@@ -1,4 +1,3 @@
-pub mod app_controller;
 pub mod command;
 pub mod module;
 pub mod storage_engine;

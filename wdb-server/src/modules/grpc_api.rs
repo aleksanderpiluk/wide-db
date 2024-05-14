@@ -2,7 +2,7 @@ use std::{net::{IpAddr, Ipv4Addr, SocketAddr}, sync::Arc};
 
 use tokio::task::JoinError;
 use tonic::{transport::Server, Request, Response, Status};
-use wdb_core::{command::{command_error::CommandError, command_executor::CommandExecutor, commands::create_table::CommandCreateTable}, module::Module};
+use wdb_core::{command::{command_error::CommandError, command_executor::CommandExecutor, commands::{create_table::CommandCreateTable, get_row::CommandGetRow}}, module::Module};
 use wdb_grpc::wdb_grpc::{wide_db_server::{WideDb, WideDbServer}, CreateTableRequest, DeleteRequest, GetRowRequest, ListTablesResponse, PutRowRequest, FILE_DESCRIPTOR_SET};
 
 #[derive(Debug)]
@@ -42,7 +42,15 @@ impl WideDb for WideDBImpl {
     }
 
     async fn get_row(&self, request: Request<GetRowRequest>) -> Result<Response<()>, Status> {
-        panic!();
+        let request = request.into_inner();
+        
+        let result = self.cmd_exec.exec_command(CommandGetRow {
+            table: request.table,
+            row: request.row,
+        }).await;
+
+        let result = WideDBImpl::handle_cmd_exec_err(result)?;
+        Ok(Response::new(()))
     }
 }
 
@@ -65,15 +73,14 @@ impl WideDBImpl {
     }
 }
 
-pub struct GrpcServer {}
+pub struct GrpcApi {}
 
-impl Module for GrpcServer {
+impl Module for GrpcApi {
     fn init(&self, cmd_exec: Arc<CommandExecutor>) {
         println!("GrpcServer is starting...");
         const DEFAULT_PORT: u16 = 50051;
 
-        let mut rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
+        tokio::spawn(async {
             let service = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
             .build()

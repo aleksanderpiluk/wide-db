@@ -64,7 +64,9 @@ message ListTablesResponse {
     repeated string tables = 1;
 }
 
-
+message ScanRequest {
+    
+}
 
 service WideDB {
     rpc CreateTable(CreateTableRequest) returns (google.protobuf.Empty);
@@ -72,4 +74,5 @@ service WideDB {
     rpc PutRow(PutRowRequest) returns (google.protobuf.Empty);
     rpc Delete(DeleteRequest) returns (google.protobuf.Empty);
     rpc GetRow(GetRowRequest) returns (google.protobuf.Empty);
+    rpc Scan(ScanRequest) returns (google.protobuf.Empty);
 }
