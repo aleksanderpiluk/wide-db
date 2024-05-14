@@ -3,7 +3,7 @@ use std::sync::{Mutex, RwLock};
 use bytes::Bytes;
 use dashmap::{iter::Iter, mapref::one::RefMut, DashMap};
 
-use crate::{row_lock::RowLockContext, utils::hashed_bytes::HashedBytes};
+use crate::{memtable::Memtable, row_lock::RowLockContext, utils::hashed_bytes::HashedBytes};
 
 use super::{table_family::TableFamily};
 
@@ -12,6 +12,7 @@ pub struct Table {
     id: u64,
     name: Bytes,
     families: DashMap<u64, TableFamily>,
+    memtable: Memtable,
     row_locks: DashMap<u64, RowLockContext>,
     families_lock: Mutex<()>,
 }
@@ -22,6 +23,7 @@ impl Table {
             id,
             name,
             families: DashMap::new(),
+            memtable: Memtable::new(),
             row_locks: DashMap::new(),
             families_lock: Mutex::new(()),
         }

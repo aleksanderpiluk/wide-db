@@ -3,7 +3,7 @@ use std::{sync::Mutex, time::{SystemTime, UNIX_EPOCH}};
 use bytes::Bytes;
 use dashmap::{mapref::one::RefMut, DashMap};
 
-use crate::{table::Table, utils::{cell::{Cell, CellType}, hashed_bytes::HashedBytes}, RowMutation, RowMutationOp};
+use crate::{row_filter::RowFilter, table::Table, utils::{cell::{Cell, CellType}, hashed_bytes::HashedBytes}, RowMutation, RowMutationOp};
 
 pub struct StorageEngine {
     tables: DashMap<u64, Table>,
@@ -62,13 +62,13 @@ impl StorageEngine {
                         }
                     };
 
-                    family.insert_cell(Cell {
-                        cell_type: CellType::Put,
-                        row: row.bytes_as_ref().clone(),
-                        column_name: column.clone(),
-                        timestamp,
-                        data: value,
-                    });
+                    // family.insert_cell(Cell {
+                    //     cell_type: CellType::Put,
+                    //     row: row.bytes_as_ref().clone(),
+                    //     column_name: column.clone(),
+                    //     timestamp,
+                    //     data: value,
+                    // });
 
                     drop(w);
                 },
@@ -85,13 +85,13 @@ impl StorageEngine {
                         }
                     };
 
-                    family.insert_cell(Cell {
-                        cell_type: CellType::Delete,
-                        row: row.bytes_as_ref().clone(),
-                        column_name: column.clone(),
-                        timestamp,
-                        data: Bytes::from(""),
-                    });
+                    // family.insert_cell(Cell {
+                    //     cell_type: CellType::Delete,
+                    //     row: row.bytes_as_ref().clone(),
+                    //     column_name: column.clone(),
+                    //     timestamp,
+                    //     data: Bytes::from(""),
+                    // });
 
                     drop(w);
                 },
@@ -156,7 +156,18 @@ impl StorageEngine {
 
             //         drop(w);
             //     }
-            // }
+            }
+        }
+    }
+
+    pub fn read_row(&mut self, table: Bytes, row: Bytes, filter: Option<&dyn RowFilter>) {
+        let table: RefMut<u64, Table, std::hash::RandomState> = self.get_table(table.clone()).unwrap();
+
+        let row = HashedBytes::from_bytes(row.clone());
+
+        let families = table.get_families_iter();
+        for family in families {
+            family.read_row(row.bytes_as_ref())
         }
     }
 }

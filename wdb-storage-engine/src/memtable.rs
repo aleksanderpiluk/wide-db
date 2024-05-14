@@ -1,11 +1,9 @@
-use std::{cmp::Ordering, ops::Bound};
-
 use bytes::Bytes;
 use crossbeam_skiplist::SkipSet;
 
-use super::cell::Cell;
+use crate::key_value::KeyValue;
 
-type Segment = SkipSet<Cell>;
+type Segment = SkipSet<KeyValue>;
 
 #[derive(Debug)]
 pub struct Memtable {
@@ -18,7 +16,7 @@ impl Memtable {
         Memtable { active: Some(Box::new(Segment::new())), snapshot: Some(Box::new(Segment::new())) }
     }
 
-    pub fn insert(&self, cell: Cell) {
+    pub fn insert(&self, cell: KeyValue) {
         self.active.as_ref().unwrap().insert(cell);
     } 
 
@@ -29,25 +27,25 @@ impl Memtable {
     }
 
     pub fn read_row(&self, row: &Bytes) -> Option<()> {
-        let row_cell = Cell {
-            row: row.clone(),
-            cell_type: None,
-            column_name: None,
-            data: None,
-            timestamp: None,
-        };
+        // let row_cell = Cell {
+        //     row: row.clone(),
+        //     cell_type: None,
+        //     column_name: None,
+        //     data: None,
+        //     timestamp: None,
+        // };
 
-        let segment = self.active.unwrap();
+        // let segment = self.active.unwrap();
         
-        let iter = match segment.lower_bound(Bound::Excluded(&row_cell)) {
-            None => return  None,
-            Some(iter) => iter,
-        };
+        // let iter = match segment.lower_bound(Bound::Excluded(&row_cell)) {
+        //     None => return  None,
+        //     Some(iter) => iter,
+        // };
         
-        let cell: Cell;
-        while ((cell = iter.next()) && (cell.cmp(&row_cell) == Ordering::Greater)) {
+        // let cell: Cell;
+        // while ((cell = iter.next()) && (cell.cmp(&row_cell) == Ordering::Greater)) {
             
-        }
+        // }
 
         return None
     }
