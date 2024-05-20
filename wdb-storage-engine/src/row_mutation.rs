@@ -21,12 +21,13 @@ pub enum RowMutationOp {
     },
 
     // DeleteRow,
-    // DeleteColumn {
-    //     family: Bytes,
-    //     column: Bytes,
-    //     timestamp: Option<u64>,
-    // },
-    // DeleteFamily {
-    //     family: Bytes,
-    // }
+    DeleteColumn {
+        family: Bytes,
+        column: Bytes,
+        timestamp: Option<u64>,
+    },
+    DeleteFamily {
+        family: Bytes,
+        timestamp: Option<u64>,
+    }
 }

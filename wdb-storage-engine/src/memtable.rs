@@ -1,7 +1,8 @@
 use bytes::Bytes;
-use crossbeam_skiplist::SkipSet;
+use crossbeam_skiplist::{set::{Entry, Range}, SkipSet};
+use std::{cmp, ops::{Bound, RangeBounds, RangeFrom}};
 
-use crate::key_value::KeyValue;
+use crate::{key_value::KeyValue, kv_scanner::KVScanner};
 
 type Segment = SkipSet<KeyValue>;
 
@@ -25,28 +26,29 @@ impl Memtable {
         self.snapshot = self.active.take();
         self.active = Some(Box::new(Segment::new()));
     }
+}
 
-    pub fn read_row(&self, row: &Bytes) -> Option<()> {
-        // let row_cell = Cell {
-        //     row: row.clone(),
-        //     cell_type: None,
-        //     column_name: None,
-        //     data: None,
-        //     timestamp: None,
-        // };
+impl KVScanner for Memtable {
+    fn scan(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> impl Iterator<Item = KeyValue> {
+        let segment = self.active.as_ref().unwrap();
 
-        // let segment = self.active.unwrap();
-        
-        // let iter = match segment.lower_bound(Bound::Excluded(&row_cell)) {
-        //     None => return  None,
-        //     Some(iter) => iter,
-        // };
-        
-        // let cell: Cell;
-        // while ((cell = iter.next()) && (cell.cmp(&row_cell) == Ordering::Greater)) {
-            
-        // }
-
-        return None
+        match (start, end) {
+            (Some(start), None) => {
+                let v: Vec<KeyValue> = segment.range(start..).map(|x| { x.value().clone() }).collect();
+                v.into_iter()
+            },
+            (None, None) => {
+                let v: Vec<KeyValue> = segment.range(..).map(|x| { x.value().clone() }).collect();
+                v.into_iter()
+            }
+            (None, Some(end)) => {
+                let v: Vec<KeyValue> = segment.range(..=end).map(|x| { x.value().clone() }).collect();
+                v.into_iter()
+            }
+            (Some(start), Some(end)) => {
+                let v: Vec<KeyValue> = segment.range(start..=end).map(|x| { x.value().clone() }).collect();
+                v.into_iter()
+            }
+        }
     }
 }

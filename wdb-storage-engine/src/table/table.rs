@@ -1,9 +1,10 @@
-use std::sync::{Mutex, RwLock};
+use std::{ops::{Bound, Range, RangeBounds}, sync::{Mutex, RwLock}};
 
 use bytes::Bytes;
 use dashmap::{iter::Iter, mapref::one::RefMut, DashMap};
+use itertools::kmerge;
 
-use crate::{memtable::Memtable, row_lock::RowLockContext, utils::hashed_bytes::HashedBytes};
+use crate::{cell::{Cell, CellType}, delete_tracker::DeleteTracker, key_value::KeyValue, kv_scanner::KVScanner, memtable::Memtable, row_lock::RowLockContext, utils::hashed_bytes::HashedBytes};
 
 use super::{table_family::TableFamily};
 
@@ -65,11 +66,41 @@ impl Table {
         lock
     }
 
-    pub fn read_row(&self, row: &Bytes) {
-        let families = self.get_families_iter();
-        for family in families {
-            family.read_row(row);
-        }
+    pub fn insert_kv(&self, cell: KeyValue) {
+        self.memtable.insert(cell);
+    }
+
+}
+
+impl KVScanner for Table {
+    fn scan(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> impl Iterator<Item = KeyValue> {
+        let iter = self.memtable.scan(start.clone(), end.clone());
+        
+        let merge_iter = kmerge(vec![iter]);
+
+        let mut delete_tracker = DeleteTracker::new();
+
+        let mut current_row: Vec<u8> = vec![];
+        merge_iter.map(move |cell| {
+            let row = cell.get_row();
+            if row != current_row {
+                delete_tracker.reset();
+                current_row = row.to_vec();
+            }
+
+            delete_tracker.add(&cell);
+
+            match cell.get_cell_type() {
+                CellType::Put => {
+                    if delete_tracker.is_deleted(&cell) {
+                        return None;
+                    }
+                    return Some(cell);
+                },
+                _ => {},
+            }
+            return None;
+        }).flatten()
     }
 }
 

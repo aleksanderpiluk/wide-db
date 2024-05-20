@@ -1,4 +1,4 @@
-use std::u8;
+use std::fmt::Debug;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
@@ -20,7 +20,7 @@ Key structure:
 - timestamp: u64
 - key_type: u8
  */
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct KeyValue {
     buffer: Bytes
 }
@@ -30,6 +30,16 @@ impl KeyValue {
         KeyValue::new_from_row_and_value(row, &Bytes::from(""))
     }
 
+    pub fn new_first_on_row(row: &Bytes) -> KeyValue {
+        let b_empty = Bytes::from("");
+        KeyValue::new(row, &b_empty, &b_empty, &u64::MAX, &CellType::Maximum, &b_empty)
+    }
+
+    pub fn new_last_on_row(row: &Bytes) -> KeyValue {
+        let b_empty = Bytes::from("");
+        KeyValue::new(row, &b_empty, &b_empty, &0, &CellType::Minimum, &b_empty)
+    }
+
     pub fn new_from_row_and_value(row: &Bytes, value: &Bytes) -> KeyValue {
         KeyValue::new(row, &Bytes::from(""), &Bytes::from(""), &u64::MAX, &CellType::Maximum, value)
     }
@@ -37,6 +47,11 @@ impl KeyValue {
     pub fn new_from_row_and_timestamp(row: &Bytes, timestamp: &u64) -> KeyValue {
         let b_empty = Bytes::from("");
         KeyValue::new(row, &b_empty, &b_empty, timestamp, &CellType::Maximum, &b_empty)
+    }
+
+    pub fn new_from_row_and_type(row: &Bytes, cell_type: &CellType) -> KeyValue {
+        let b_empty = Bytes::from("");
+        KeyValue::new(row, &b_empty, &b_empty, &0, cell_type, &b_empty)
     }
 
     pub fn new(row: &Bytes, cf: &Bytes, col: &Bytes, timestamp: &u64, key_type: &CellType, value: &Bytes) -> KeyValue {
@@ -62,6 +77,10 @@ impl KeyValue {
         buffer.put(value.clone());
         
         KeyValue { buffer: buffer.freeze() }
+    }
+
+    pub fn as_bytes(&self) -> Bytes {
+        self.buffer.clone()
     }
 }
 
@@ -121,6 +140,27 @@ impl Cell for KeyValue {
         let mut buf = &self.buffer[pos..];
         CellType::try_from(buf.get_u8()).unwrap()
     }
+
+    fn get_key(&self) -> &[u8] {
+        let len = self.get_key_len() as usize;
+        &self.buffer[10..(10+len)]
+    }
+
+    fn get_key_without_cell_type(&self) -> &[u8] {
+        let len = self.get_key_len() as usize - 1;
+        &self.buffer[10..(10+len)]
+    }
+
+    fn get_key_row_cf_col(&self) -> &[u8] {
+        let len = self.get_key_len() as usize - 9;
+        &self.buffer[10..(10+len)]
+    }
+    
+    fn get_value(&self) -> &[u8] {
+        let pos = 10 + self.get_key_len() as usize;
+        let len = self.get_value_len() as usize;
+        &self.buffer[pos..(pos+len)]
+    }
 }
 
 impl Ord for KeyValue {    
@@ -138,8 +178,12 @@ impl Ord for KeyValue {
             return std::cmp::Ordering::Less;
         }
 
-        if self.get_cf_len() != other.get_cf_len() {
-            return self.get_cf().cmp(other.get_cf());
+        // if self.get_cf_len() != other.get_cf_len() {
+            // return self.get_cf().cmp(other.get_cf());
+        // }
+        match self.get_cf().cmp(other.get_cf()) {
+            std::cmp::Ordering::Equal => {},
+            ord => return ord,
         }
 
         match self.get_col().cmp(other.get_col()) {
@@ -147,7 +191,7 @@ impl Ord for KeyValue {
             ord => return ord,
         }
 
-        match self.get_timestamp().cmp(&other.get_timestamp()) {
+        match other.get_timestamp().cmp(&self.get_timestamp()) {
             std::cmp::Ordering::Equal => {},
             ord => return ord,
         }
@@ -159,6 +203,19 @@ impl Ord for KeyValue {
 impl PartialOrd for KeyValue {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl Debug for KeyValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyValue")
+            .field("row", &String::from_utf8(self.get_row().to_vec()).unwrap())
+            .field("cf", &String::from_utf8(self.get_cf().to_vec()).unwrap())
+            .field("col", &String::from_utf8(self.get_col().to_vec()).unwrap())
+            .field("ts", &self.get_timestamp())
+            .field("type", &self.get_cell_type())
+            .field("value", &String::from_utf8(self.get_value().to_vec()).unwrap())
+            .finish()
     }
 }
 
@@ -175,14 +232,22 @@ mod tests {
         let value = Bytes::from("some unique data...");
         
 
-        let kv = KeyValue::new(&row, &cf, &col, &timestamp, &CellType::Maximum, &value);
-        
+        let kv = KeyValue::new(&row, &cf, &col, &timestamp, &CellType::Maximum, &value);        
 
         let row_len = row.len();
         let cf_len = cf.len();
         let col_len = col.len();
         let key_len = 2 + row_len + 2 + cf_len + col_len + 8 + 1;
         let val_len = value.len() as u64;
+
+        let mut key = BytesMut::with_capacity(key_len);
+        key.put_u16(row_len as u16);
+        key.put(&row[..]);
+        key.put_u16(cf_len as u16);
+        key.put(&cf[..]);
+        key.put(&col[..]);
+        key.put_u64(timestamp);
+        key.put_u8(CellType::Maximum as u8);
 
         assert_eq!(kv.get_key_len(), key_len as u16);
         assert_eq!(kv.get_value_len(), val_len as u64);
@@ -194,5 +259,7 @@ mod tests {
         assert_eq!(*kv.get_col(), col[..]);
         assert_eq!(kv.get_timestamp(), timestamp);
         assert_eq!(kv.get_cell_type(), CellType::Maximum);
+        assert_eq!(*kv.get_key(), key[..]);
+        assert_eq!(*kv.get_value(), value[..]);
     }
 }
