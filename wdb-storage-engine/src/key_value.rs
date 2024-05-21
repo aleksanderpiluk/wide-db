@@ -262,4 +262,22 @@ mod tests {
         assert_eq!(*kv.get_key(), key[..]);
         assert_eq!(*kv.get_value(), value[..]);
     }
+
+    #[test]
+    fn order_test() {
+        let b_empty = Bytes::from_static(b"");
+
+        let delete_family = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::DeleteFamily, &b_empty);
+        let delete_column = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::DeleteColumn, &b_empty);
+        let delete = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::Delete, &b_empty);
+        let put = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::Put, &b_empty);
+        let first = KeyValue::new_first_on_row(&b_empty);
+        let last = KeyValue::new_last_on_row(&b_empty);
+
+        let mut v = vec![last.clone(), put.clone(), delete.clone(), delete_column.clone(), delete_family.clone(), first.clone()];
+        v.sort();
+        // println!("{:?}", v);
+
+        assert!(v == [first, delete_family, delete_column, delete, put, last]);
+    }
 }
