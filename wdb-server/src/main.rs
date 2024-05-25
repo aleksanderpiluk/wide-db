@@ -1,29 +1,31 @@
-mod modules;
 mod server;
+mod server_ctx;
+mod grpc;
 
 use std::sync::Arc;
+use log::info;
 use tokio::signal;
-
-use wdb_storage_engine::storage_engine::DefaultStorageEngine;
+use wdb_storage_engine::StorageEngine;
 
 use self::server::Server;
-use self::modules::GrpcApi;
+use grpc::GrpcApi;
 
 #[tokio::main]
 async fn main() {
-    println!("WideDB server is starting...");
+    env_logger::init();
 
-    println!("Initializing storage engine...");
-    let storage_engine = Arc::new(DefaultStorageEngine::init());
-    println!("Storage engine initialization success!");
+    info!("WideDB server is starting...");
 
-    println!("Initializing app server...");
-    let mut server = Server::init(storage_engine);
-    println!("App server initialization success!");
+    info!("Initializing storage engine...");
+    let storage_engine = Arc::new(StorageEngine::empty());
+    info!("Storage engine initialization success!");
 
-    println!("Starting app modules initialization...");
+    info!("Initializing app server...");
+    let server = Server::init(storage_engine);
+    info!("App server initialization success!");
 
-    server.add_module(GrpcApi {});
+    info!("Starting grpc server...");
+    GrpcApi::init(server.get_ctx().clone());
 
     match signal::ctrl_c().await {
         Ok(()) => {},

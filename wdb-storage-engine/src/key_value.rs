@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
-use crate::cell::{Cell, CellType};
+use crate::{cell::{Cell, CellType}, utils::Timestamp};
 
 /*
 Keyvalue buffer structure:
@@ -22,6 +22,7 @@ Key structure:
  */
 #[derive(PartialEq, Eq, Clone)]
 pub struct KeyValue {
+    mvcc_id: u64,
     buffer: Bytes
 }
 
@@ -32,29 +33,29 @@ impl KeyValue {
 
     pub fn new_first_on_row(row: &Bytes) -> KeyValue {
         let b_empty = Bytes::from("");
-        KeyValue::new(row, &b_empty, &b_empty, &u64::MAX, &CellType::Maximum, &b_empty)
+        KeyValue::new(row, &b_empty, &b_empty, Timestamp::MAX, &CellType::Maximum, &b_empty)
     }
 
     pub fn new_last_on_row(row: &Bytes) -> KeyValue {
         let b_empty = Bytes::from("");
-        KeyValue::new(row, &b_empty, &b_empty, &0, &CellType::Minimum, &b_empty)
+        KeyValue::new(row, &b_empty, &b_empty, Timestamp::MIN, &CellType::Minimum, &b_empty)
     }
 
     pub fn new_from_row_and_value(row: &Bytes, value: &Bytes) -> KeyValue {
-        KeyValue::new(row, &Bytes::from(""), &Bytes::from(""), &u64::MAX, &CellType::Maximum, value)
+        KeyValue::new(row, &Bytes::from(""), &Bytes::from(""), Timestamp::MAX, &CellType::Maximum, value)
     }
 
-    pub fn new_from_row_and_timestamp(row: &Bytes, timestamp: &u64) -> KeyValue {
+    pub fn new_from_row_and_timestamp(row: &Bytes, timestamp: Timestamp) -> KeyValue {
         let b_empty = Bytes::from("");
         KeyValue::new(row, &b_empty, &b_empty, timestamp, &CellType::Maximum, &b_empty)
     }
 
     pub fn new_from_row_and_type(row: &Bytes, cell_type: &CellType) -> KeyValue {
         let b_empty = Bytes::from("");
-        KeyValue::new(row, &b_empty, &b_empty, &0, cell_type, &b_empty)
+        KeyValue::new(row, &b_empty, &b_empty, Timestamp::MIN, cell_type, &b_empty)
     }
 
-    pub fn new(row: &Bytes, cf: &Bytes, col: &Bytes, timestamp: &u64, key_type: &CellType, value: &Bytes) -> KeyValue {
+    pub fn new(row: &Bytes, cf: &Bytes, col: &Bytes, timestamp: Timestamp, key_type: &CellType, value: &Bytes) -> KeyValue {
         let row_len = row.len();
         let cf_len = cf.len();
         let key_len = 2 + row_len + 2 + cf_len + col.len() + 8 + 1;
@@ -71,16 +72,24 @@ impl KeyValue {
         buffer.put_u16(cf_len as u16);
         buffer.put(cf.clone());
         buffer.put(col.clone());
-        buffer.put_u64(*timestamp);
+        buffer.put_u64(timestamp.into());
         buffer.put_u8(*key_type as u8);
 
         buffer.put(value.clone());
         
-        KeyValue { buffer: buffer.freeze() }
+        KeyValue { buffer: buffer.freeze(), mvcc_id: 0 }
     }
 
     pub fn as_bytes(&self) -> Bytes {
         self.buffer.clone()
+    }
+
+    pub fn set_mvcc_id(&mut self, mvcc_id: u64) {
+        self.mvcc_id = mvcc_id;
+    }
+
+    pub fn get_mvcc_id(&self) -> u64 {
+        self.mvcc_id
     }
 }
 
@@ -129,10 +138,10 @@ impl Cell for KeyValue {
         &self.buffer[pos..(pos+len)]
     }
 
-    fn get_timestamp(&self) -> u64 {
+    fn get_timestamp(&self) -> Timestamp {
         let pos = 10 + self.get_key_len() as usize - 8 - 1;
         let mut buf = &self.buffer[pos..];
-        buf.get_u64()
+        Timestamp::from(buf.get_u64())
     }
 
     fn get_cell_type(&self) -> CellType {
@@ -196,7 +205,12 @@ impl Ord for KeyValue {
             ord => return ord,
         }
 
-        return (other.get_cell_type() as u8).cmp(&(self.get_cell_type() as u8))
+        match (other.get_cell_type() as u8).cmp(&(self.get_cell_type() as u8)) {
+            std::cmp::Ordering::Equal => {},
+            ord => return ord,
+        }
+
+        other.mvcc_id.cmp(&self.mvcc_id)
     }
 }
 
@@ -228,11 +242,11 @@ mod tests {
         let row = Bytes::from("some_row");
         let cf = Bytes::from("cf");
         let col = Bytes::from("123");
-        let timestamp = 333;
+        let timestamp = Timestamp::new(333);
         let value = Bytes::from("some unique data...");
         
 
-        let kv = KeyValue::new(&row, &cf, &col, &timestamp, &CellType::Maximum, &value);        
+        let kv = KeyValue::new(&row, &cf, &col, timestamp, &CellType::Maximum, &value);        
 
         let row_len = row.len();
         let cf_len = cf.len();
@@ -246,7 +260,7 @@ mod tests {
         key.put_u16(cf_len as u16);
         key.put(&cf[..]);
         key.put(&col[..]);
-        key.put_u64(timestamp);
+        key.put_u64(timestamp.into());
         key.put_u8(CellType::Maximum as u8);
 
         assert_eq!(kv.get_key_len(), key_len as u16);
@@ -267,10 +281,10 @@ mod tests {
     fn order_test() {
         let b_empty = Bytes::from_static(b"");
 
-        let delete_family = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::DeleteFamily, &b_empty);
-        let delete_column = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::DeleteColumn, &b_empty);
-        let delete = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::Delete, &b_empty);
-        let put = KeyValue::new(&b_empty, &b_empty, &b_empty, &0, &CellType::Put, &b_empty);
+        let delete_family = KeyValue::new(&b_empty, &b_empty, &b_empty, Timestamp::MIN, &CellType::DeleteFamily, &b_empty);
+        let delete_column = KeyValue::new(&b_empty, &b_empty, &b_empty, Timestamp::MIN, &CellType::DeleteColumn, &b_empty);
+        let delete = KeyValue::new(&b_empty, &b_empty, &b_empty, Timestamp::MIN, &CellType::Delete, &b_empty);
+        let put = KeyValue::new(&b_empty, &b_empty, &b_empty, Timestamp::MIN, &CellType::Put, &b_empty);
         let first = KeyValue::new_first_on_row(&b_empty);
         let last = KeyValue::new_last_on_row(&b_empty);
 

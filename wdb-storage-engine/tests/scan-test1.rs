@@ -1,16 +1,14 @@
 mod utils;
 
-use std::ops::Bound;
-
 use bytes::Bytes;
-use wdb_storage_engine::{RowMutation, RowMutationOp, StorageEngine};
+use wdb_storage_engine::{RowMutation, RowMutationOp, StorageEngine, Timestamp};
 
 #[test]
 fn in_memory_test() {
     let table_name = Bytes::from("users");
-    let timestamp = Some(1500000000);
+    let timestamp = Some(Timestamp::from(1500000000));
 
-    let mut storage_engine = StorageEngine::empty();
+    let storage_engine = StorageEngine::empty();
 
     storage_engine.create_table(table_name.clone()).unwrap();
     let mut table = storage_engine.get_table(table_name.clone()).unwrap();
@@ -83,9 +81,9 @@ fn in_memory_test() {
         table: table_name.clone(),
         row: Bytes::from("user3"),
         ops: vec![
-            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(1500000000 + 10), value: Bytes::from("22") },
-            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(1500000000 + 20), value: Bytes::from("18") },
-            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(1500000000 + 30), value: Bytes::from("10") },
+            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 10)), value: Bytes::from("22") },
+            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 20)), value: Bytes::from("18") },
+            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 30)), value: Bytes::from("10") },
         ]
     });
 
@@ -96,7 +94,7 @@ fn in_memory_test() {
         table: table_name.clone(),
         row: Bytes::from("user3"),
         ops: vec![
-            RowMutationOp::DeleteColumn { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(1500000000 + 30) }
+            RowMutationOp::DeleteColumn { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 30)) }
         ]
     });
 

@@ -12,6 +12,10 @@ impl TableFamily {
         TableFamily { id, name, sstables: Vec::new() }
     }
 
+    pub fn get_name(&self) -> Bytes {
+        self.name.clone()
+    }
+
     // pub fn insert_cell(&self, cell: Cell) {
     //     self.memtable.insert(cell);
     // }

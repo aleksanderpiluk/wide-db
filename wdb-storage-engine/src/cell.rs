@@ -1,3 +1,5 @@
+use crate::utils::Timestamp;
+
 pub trait Cell {
     fn get_key_len(&self) -> u16;
     fn get_value_len(&self) -> u64;
@@ -7,7 +9,7 @@ pub trait Cell {
     fn get_cf(&self) -> &[u8];
     fn get_col_len(&self) -> u16;
     fn get_col(&self) -> &[u8];
-    fn get_timestamp(&self) -> u64;
+    fn get_timestamp(&self) -> Timestamp;
     fn get_cell_type(&self) -> CellType;
     fn get_key(&self) -> &[u8];
     fn get_key_without_cell_type(&self) -> &[u8];

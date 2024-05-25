@@ -1,7 +1,7 @@
-use std::{ops::{Bound, Range, RangeBounds}, sync::{Mutex, RwLock}};
+use std::{collections::LinkedList, ops::{Bound, Range, RangeBounds}, sync::{atomic::AtomicU64, Arc, Mutex, RwLock}};
 
 use bytes::Bytes;
-use dashmap::{iter::Iter, mapref::one::RefMut, DashMap};
+use dashmap::{iter::Iter, mapref::one::Ref, DashMap};
 use itertools::kmerge;
 
 use crate::{cell::{Cell, CellType}, delete_tracker::DeleteTracker, key_value::KeyValue, kv_scanner::KVScanner, memtable::Memtable, row_lock::RowLockContext, utils::hashed_bytes::HashedBytes};
@@ -16,6 +16,9 @@ pub struct Table {
     memtable: Memtable,
     row_locks: DashMap<u64, RowLockContext>,
     families_lock: Mutex<()>,
+    mvcc_read_point: AtomicU64,
+    mvcc_write_point: AtomicU64,
+    mvcc_write_queue: LinkedList<Arc<MVCCWriteEntry>>,
 }
 
 impl Table {
@@ -27,13 +30,20 @@ impl Table {
             memtable: Memtable::new(),
             row_locks: DashMap::new(),
             families_lock: Mutex::new(()),
+            mvcc_read_point: AtomicU64::new(0),
+            mvcc_write_point: AtomicU64::new(0),
+            mvcc_write_queue: LinkedList::new(),
         }
     }
 
-    pub fn get_family(&self, name: &Bytes) -> Option<RefMut<u64, TableFamily>> {
+    pub fn get_name(&self) -> Bytes {
+        self.name.clone()
+    }
+
+    pub fn get_family(&self, name: &Bytes) -> Option<Ref<u64, TableFamily>> {
         let name = HashedBytes::from_bytes(name.clone());
 
-        self.families.get_mut(name.hash_as_ref())
+        self.families.get(name.hash_as_ref())
     }
 
     pub fn get_families_iter(&self) -> Iter<u64, TableFamily> {
@@ -70,6 +80,23 @@ impl Table {
         self.memtable.insert(cell);
     }
 
+    pub fn mvcc_new_write(&self) -> Arc<MVCCWriteEntry>{
+        let prev = self.mvcc_write_point.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let write_num = prev + 1;
+        let write_entry = Arc::new(MVCCWriteEntry {
+            write_num,
+            completed: false,
+        });
+        // self.mvcc_write_queue.push_back(write_entry.clone());
+        write_entry
+    }
+
+}
+
+#[derive(Debug)]
+pub struct MVCCWriteEntry {
+    write_num: u64,
+    completed: bool,
 }
 
 impl KVScanner for Table {

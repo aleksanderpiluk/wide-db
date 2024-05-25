@@ -24,3 +24,7 @@ pub use table::Table;
 pub use table::TableFamily;
 
 pub use persistance_layer::PersistanceLayer;
+
+pub use utils::Timestamp;
+
+pub use cell::Cell;

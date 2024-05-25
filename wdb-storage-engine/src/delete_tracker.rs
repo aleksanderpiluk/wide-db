@@ -2,11 +2,11 @@ use std::{cmp, collections::{HashMap, HashSet}};
 
 use bytes::Bytes;
 
-use crate::{cell::{Cell, CellType}, key_value::KeyValue};
+use crate::{cell::{Cell, CellType}, key_value::KeyValue, utils::Timestamp};
 
 pub struct DeleteTracker {
-    families_deleted: HashMap<Vec<u8>, u64>,
-    columns_deleted: HashMap<Vec<u8>, u64>,
+    families_deleted: HashMap<Vec<u8>, Timestamp>,
+    columns_deleted: HashMap<Vec<u8>, Timestamp>,
     cells_deleted: HashSet<Vec<u8>>,
 }
 
