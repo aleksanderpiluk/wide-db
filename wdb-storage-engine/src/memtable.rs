@@ -1,6 +1,4 @@
-use bytes::Bytes;
-use crossbeam_skiplist::{set::{Entry, Range}, SkipSet};
-use std::{cmp, ops::{Bound, RangeBounds, RangeFrom}};
+use crossbeam_skiplist::SkipSet;
 
 use crate::{key_value::KeyValue, kv_scanner::KVScanner};
 
@@ -29,7 +27,7 @@ impl Memtable {
 }
 
 impl KVScanner for Memtable {
-    fn scan(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> impl Iterator<Item = KeyValue> {
+    fn scan(&self, start: Option<KeyValue>, end: Option<KeyValue>, read_point: Option<u64>) -> impl Iterator<Item = KeyValue> {
         let segment = self.active.as_ref().unwrap();
 
         match (start, end) {

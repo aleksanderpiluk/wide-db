@@ -56,8 +56,7 @@ impl StorageEngine {
 
         let start = KeyValue::new_first_on_row(row.bytes_as_ref());
         let end = KeyValue::new_last_on_row(row.bytes_as_ref());
-        
-        
+
         let iter = table.scan(Some(start), Some(end));
         
         return RowResult { 

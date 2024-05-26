@@ -1,0 +1,15 @@
+syntax = "proto3";
+package widedb;
+
+message Table {
+    string name = 1;
+    repeated string column_families = 2;
+}
+
+message Cell {
+    string row_key = 1;
+    string family = 2;
+    string column = 3;
+    int64 timestamp = 4;
+    bytes value = 5;
+}

@@ -1,8 +1,10 @@
-use std::{collections::LinkedList, ops::{Bound, Range, RangeBounds}, sync::{atomic::AtomicU64, Arc, Mutex, RwLock}};
+use std::{collections::LinkedList, ops::{Bound, Range, RangeBounds}, sync::{atomic::{AtomicBool, AtomicU64, Ordering}, Arc, Mutex, RwLock}};
 
+use bincode::de::read;
 use bytes::Bytes;
 use dashmap::{iter::Iter, mapref::one::Ref, DashMap};
 use itertools::kmerge;
+use log::debug;
 
 use crate::{cell::{Cell, CellType}, delete_tracker::DeleteTracker, key_value::KeyValue, kv_scanner::KVScanner, memtable::Memtable, row_lock::RowLockContext, utils::hashed_bytes::HashedBytes};
 
@@ -18,7 +20,7 @@ pub struct Table {
     families_lock: Mutex<()>,
     mvcc_read_point: AtomicU64,
     mvcc_write_point: AtomicU64,
-    mvcc_write_queue: LinkedList<Arc<MVCCWriteEntry>>,
+    mvcc_write_queue: Mutex<LinkedList<Arc<MVCCWriteEntry>>>,
 }
 
 impl Table {
@@ -32,7 +34,7 @@ impl Table {
             families_lock: Mutex::new(()),
             mvcc_read_point: AtomicU64::new(0),
             mvcc_write_point: AtomicU64::new(0),
-            mvcc_write_queue: LinkedList::new(),
+            mvcc_write_queue: Mutex::new(LinkedList::new()),
         }
     }
 
@@ -80,28 +82,49 @@ impl Table {
         self.memtable.insert(cell);
     }
 
-    pub fn mvcc_new_write(&self) -> Arc<MVCCWriteEntry>{
+    pub fn mvcc_new_write(&self) -> Arc<MVCCWriteEntry> {
         let prev = self.mvcc_write_point.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let write_num = prev + 1;
         let write_entry = Arc::new(MVCCWriteEntry {
             write_num,
-            completed: false,
+            completed: AtomicBool::new(false),
         });
-        // self.mvcc_write_queue.push_back(write_entry.clone());
+        self.mvcc_write_queue.lock().unwrap().push_back(write_entry.clone());
         write_entry
     }
 
-}
+    pub fn mvcc_get_read_point(&self) -> u64 {
+        self.mvcc_read_point.load(Ordering::Relaxed)
+    }
 
-#[derive(Debug)]
-pub struct MVCCWriteEntry {
-    write_num: u64,
-    completed: bool,
-}
+    pub fn mvcc_complete(&self, write_entry: Arc<MVCCWriteEntry>) {
+        write_entry.mark_as_completed();
+        let mut queue = self.mvcc_write_queue.lock().unwrap();
 
-impl KVScanner for Table {
-    fn scan(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> impl Iterator<Item = KeyValue> {
-        let iter = self.memtable.scan(start.clone(), end.clone());
+        let mut read_point = self.mvcc_get_read_point();
+        while !queue.is_empty() {
+            let first = queue.front().unwrap();
+            debug!("Read point: {} ; Write point: {}", read_point, first.write_num);
+            if read_point + 1 != first.write_num {
+                panic!("MVCC has left the chat...");
+            }
+
+            if first.completed.load(Ordering::Relaxed) {
+                read_point = first.write_num;
+                queue.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        self.mvcc_read_point.store(read_point, Ordering::Relaxed);
+        debug!("MVCC new read point: {}", read_point);
+    }
+
+    pub fn scan(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> impl Iterator<Item = KeyValue> + '_ {
+        let read_point = self.mvcc_get_read_point();
+
+        let iter = self.memtable.scan(start.clone(), end.clone(), Some(read_point));
         
         let merge_iter = kmerge(vec![iter]);
 
@@ -130,6 +153,23 @@ impl KVScanner for Table {
         }).flatten()
     }
 }
+
+#[derive(Debug)]
+pub struct MVCCWriteEntry {
+    write_num: u64,
+    completed: AtomicBool,
+}
+
+impl MVCCWriteEntry {
+    pub fn get_write_num(&self) -> u64 {
+        self.write_num
+    }
+
+    fn mark_as_completed(&self) {
+        self.completed.store(true, Ordering::Relaxed);
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
