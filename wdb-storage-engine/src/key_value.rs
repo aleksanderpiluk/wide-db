@@ -94,6 +94,11 @@ impl KeyValue {
 }
 
 impl Cell for KeyValue {
+    fn get_size(&self) -> u64 {
+        let size: u64 = 2 + 8 + self.get_key_len() as u64 + self.get_value_len();
+        size
+    }
+
     fn get_key_len(&self) -> u16 {
         let mut buf = &self.buffer[0..];
         buf.get_u16()

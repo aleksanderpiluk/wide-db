@@ -1,4 +1,7 @@
-use crossbeam_skiplist::{set::Entry, SkipSet};
+use std::{ops::RangeBounds, sync::{atomic::{AtomicU64, AtomicUsize, Ordering}, Arc}, vec::IntoIter};
+
+use arc_swap::ArcSwap;
+use crossbeam_skiplist::{set::{Entry, Range}, SkipSet};
 
 use crate::{key_value::KeyValue, kv_scanner::KVScanner, Cell};
 
@@ -6,71 +9,80 @@ type Segment = SkipSet<KeyValue>;
 
 #[derive(Debug)]
 pub struct Memtable {
-    active: Option<Box<Segment>>,
-    snapshot: Option<Box<Segment>>
+    active: ArcSwap<Segment>,
+    activeSize: AtomicU64,
+    snapshot: ArcSwap<Segment>
 }
 
 impl Memtable {
     pub fn new() -> Memtable {
-        Memtable { active: Some(Box::new(Segment::new())), snapshot: Some(Box::new(Segment::new())) }
+        Memtable { 
+            active: ArcSwap::from(Arc::new(Segment::new())),
+            activeSize: AtomicU64::new(0),
+            snapshot: ArcSwap::default(),
+        }
     }
 
     pub fn insert(&self, cell: KeyValue) {
-        self.active.as_ref().unwrap().insert(cell);
+        let size = cell.get_size();        
+        self.active.load().insert(cell);
+        self.activeSize.fetch_add(size, Ordering::Relaxed);
     } 
 
-    // TODO: THIS IS NOT THREAD-SAFE OPERATION
-    pub fn snapshot(&mut self) {
-        self.snapshot = self.active.take();
-        self.active = Some(Box::new(Segment::new()));
+    // TODO: This operation may override old snapshot. Add correct handling.
+    pub fn snapshot(&self) {
+        let to_flush = self.active.load_full();
+        let new_active = Arc::new(Segment::new());
+        self.snapshot.store(to_flush);
+        self.active.store(new_active);
     }
 
-    pub fn scan<'a>(&self, start: Option<KeyValue>, end: Option<KeyValue>, read_point: Option<u64>) -> Box<dyn Iterator<Item = KeyValue> + '_> {
-        let segment = self.active.as_ref().unwrap();
-        
-        fn run_scan<'a, T: Iterator<Item = Entry<'a, KeyValue>>>(iter: T, read_point: Option<u64>) -> MemtableIterator<'a, T> {
-            MemtableIterator::new(iter, read_point)
-        }
+    pub fn get_active_size(&self) -> u64 {
+        self.activeSize.load(Ordering::Relaxed)
+    }
+
+    pub fn scan<'a>(&self, start: Option<KeyValue>, end: Option<KeyValue>, read_point: Option<u64>) -> impl Iterator<Item = KeyValue> + '_ {
+        let segment = self.active.load_full();
 
         match (start, end) {
             (Some(start), None) => {
-                Box::new(run_scan(segment.range(start..).into_iter(), read_point))
+                MemtableIterator::new(segment, start.., read_point)
             },
             (None, None) => {
-                Box::new(run_scan(segment.range(..).into_iter(), read_point))
+                MemtableIterator::new(segment, .., read_point)
             }
             (None, Some(end)) => {
-                Box::new(run_scan(segment.range(..=end).into_iter(), read_point))
+                MemtableIterator::new(segment, ..=end, read_point)
             }
             (Some(start), Some(end)) => {
-                Box::new(run_scan(segment.range(start..=end).into_iter(), read_point))
+                MemtableIterator::new(segment, start..=end, read_point)
             }
         }
     }
 }
 
-struct MemtableIterator<'a, T: Iterator<Item = Entry<'a, KeyValue>>> {
-    iter: T,
+struct MemtableIterator {
+    iter: IntoIter<KeyValue>,
     last_key: Option<Vec<u8>>,
     read_point: Option<u64>
 }
 
-impl<'a, T: Iterator<Item = Entry<'a, KeyValue>>> MemtableIterator<'a, T> {
-    fn new(iter: T, read_point: Option<u64>) -> MemtableIterator<'a, T> {
+impl MemtableIterator {
+    fn new<R: RangeBounds<KeyValue>>(segment: Arc<Segment>, range: R, read_point: Option<u64>) -> MemtableIterator {
+        let iter = segment.range(range).map(|entry| { entry.value().clone() }).collect::<Vec<KeyValue>>();
         MemtableIterator {
-            iter,
+            iter: iter.into_iter(),
             last_key: None,
             read_point,
         }
     }
 }
 
-impl<'a, T: Iterator<Item = Entry<'a, KeyValue>>> Iterator for MemtableIterator<'a, T> {
+impl<'a> Iterator for MemtableIterator {
     type Item = KeyValue;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(kv) = self.iter.next() {
-            let kv = kv.value();
             // Check if MVCC enabled
             if let Some(point) = self.read_point {
                 if kv.get_mvcc_id() > point {
@@ -92,7 +104,3 @@ impl<'a, T: Iterator<Item = Entry<'a, KeyValue>>> Iterator for MemtableIterator<
         None
     }
 }
-
-// impl KVScanner for Memtable {
-    
-// }

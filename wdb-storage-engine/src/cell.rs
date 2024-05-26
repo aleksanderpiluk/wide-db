@@ -1,6 +1,7 @@
 use crate::utils::Timestamp;
 
 pub trait Cell {
+    fn get_size(&self) -> u64;
     fn get_key_len(&self) -> u16;
     fn get_value_len(&self) -> u64;
     fn get_row_len(&self) -> u16;

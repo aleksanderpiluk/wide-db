@@ -48,6 +48,14 @@ impl Table {
         self.families.get(name.hash_as_ref())
     }
 
+    pub fn get_memtable_size(&self) -> u64 {
+        self.memtable.get_active_size()
+    }
+
+    pub fn flush_memtable(&self) {
+        self.memtable.snapshot()
+    }
+
     pub fn get_families_iter(&self) -> Iter<u64, TableFamily> {
         self.families.iter()
     }

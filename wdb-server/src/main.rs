@@ -2,7 +2,6 @@ mod server;
 mod server_ctx;
 mod grpc;
 
-use std::sync::Arc;
 use log::info;
 use tokio::signal;
 use wdb_storage_engine::StorageEngine;
@@ -17,7 +16,7 @@ async fn main() {
     info!("WideDB server is starting...");
 
     info!("Initializing storage engine...");
-    let storage_engine = Arc::new(StorageEngine::empty());
+    let storage_engine = StorageEngine::empty();
     info!("Storage engine initialization success!");
 
     info!("Initializing app server...");

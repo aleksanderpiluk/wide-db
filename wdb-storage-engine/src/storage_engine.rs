@@ -1,9 +1,9 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use dashmap::{mapref::one::RefMut, DashMap};
 
-use crate::{ key_value::KeyValue, kv_scanner::KVScanner, row_filter::RowFilter, row_mutation::RowMutationExecutor, row_result::RowResult, table::Table, utils::{hashed_bytes::HashedBytes, Timestamp}, RowMutation, RowMutationOp, TableFamily};
+use crate::{ flush_agent::FlushAgent, key_value::KeyValue, kv_scanner::KVScanner, row_filter::RowFilter, row_mutation::RowMutationExecutor, row_result::RowResult, table::Table, utils::{hashed_bytes::HashedBytes, Timestamp}, RowMutation, RowMutationOp, TableFamily};
 
 pub struct StorageEngine {
     tables: DashMap<u64, Table>,
@@ -11,11 +11,15 @@ pub struct StorageEngine {
 }
 
 impl StorageEngine {
-    pub fn empty() -> StorageEngine {
-        StorageEngine {
+    pub fn empty() -> Arc<StorageEngine> {
+        let engine = Arc::new(StorageEngine {
             tables: DashMap::new(),
             tables_lock: Mutex::new(()),
-        }
+        });
+
+        FlushAgent::new(engine.clone());
+
+        engine
     }    
 
     pub fn create_table(&self, name: Bytes) -> Result<(), &'static str> {
@@ -33,6 +37,10 @@ impl StorageEngine {
         self.tables.insert(id, table);
 
         Ok(())
+    }
+
+    pub fn get_tables_iter(&self) -> dashmap::iter::Iter<u64, Table, std::hash::RandomState, DashMap<u64, Table>> {
+        self.tables.iter()
     }
 
     pub fn get_table(&self, name: Bytes) -> Option<RefMut<u64, Table>> {
