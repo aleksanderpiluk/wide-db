@@ -1,22 +1,23 @@
 use tonic::{Request, Response, Status};
 use wdb_grpc::wdb_grpc::{wide_db_server::WideDb, *};
+use wdb_storage_engine::PersistanceLayer;
 
 use crate::server_ctx::ServerCtx;
 
 use super::handlers;
 
-pub struct HandlersService {
-    server_ctx: ServerCtx,
+pub struct HandlersService<P: PersistanceLayer> {
+    server_ctx: ServerCtx<P>,
 }
 
-impl HandlersService {
-    pub fn new(ctx: ServerCtx) -> HandlersService {
+impl<P: PersistanceLayer> HandlersService<P> {
+    pub fn new(ctx: ServerCtx<P>) -> HandlersService<P> {
         HandlersService { server_ctx: ctx }
     }
 }
 
 #[tonic::async_trait]
-impl WideDb for HandlersService {
+impl<P: PersistanceLayer> WideDb for HandlersService<P> {
     async fn create_table(&self, request: Request<CreateTableRequest>) -> Result<Response<Table>, Status> {
         handlers::create_table(&self.server_ctx, request).await
     }

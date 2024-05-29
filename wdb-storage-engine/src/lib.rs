@@ -4,7 +4,7 @@ mod table;
 mod row_mutation;
 mod utils;
 
-mod fs_controller;
+mod fs_persistance;
 mod flush_agent;
 mod row_filter;
 mod key_value;
@@ -28,3 +28,5 @@ pub use persistance_layer::PersistanceLayer;
 pub use utils::Timestamp;
 
 pub use cell::Cell;
+
+pub use fs_persistance::FSPersistance;

@@ -1,11 +1,11 @@
 use bytes::Bytes;
 use tonic::{Request, Response, Status};
 use wdb_grpc::wdb_grpc::MutateRowRequest;
-use wdb_storage_engine::{RowMutation, RowMutationOp, Timestamp};
+use wdb_storage_engine::{PersistanceLayer, RowMutation, RowMutationOp, Timestamp};
 
 use crate::server_ctx::ServerCtx;
 
-pub async fn row_mutate(ctx: &ServerCtx, request: Request<MutateRowRequest>) -> Result<Response<()>, Status> {
+pub async fn row_mutate<P: PersistanceLayer>(ctx: &ServerCtx<P>, request: Request<MutateRowRequest>) -> Result<Response<()>, Status> {
     let request = request.into_inner();
 
     let get_timestamp = |val: i64| -> Result<Option<Timestamp>, Status> {

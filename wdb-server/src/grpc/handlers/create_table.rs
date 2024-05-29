@@ -3,10 +3,11 @@ use std::collections::HashSet;
 use bytes::Bytes;
 use tonic::{Request, Response, Status};
 use wdb_grpc::wdb_grpc::{CreateTableRequest, Table};
+use wdb_storage_engine::PersistanceLayer;
 
 use crate::server_ctx::ServerCtx;
 
-pub async fn create_table(ctx: &ServerCtx, request: Request<CreateTableRequest>) -> Result<Response<Table>, Status> {
+pub async fn create_table<P: PersistanceLayer>(ctx: &ServerCtx<P>, request: Request<CreateTableRequest>) -> Result<Response<Table>, Status> {
     let request = request.into_inner();
     
     if request.table_name.len() <= 0 || request.table_name.len() > 64 {

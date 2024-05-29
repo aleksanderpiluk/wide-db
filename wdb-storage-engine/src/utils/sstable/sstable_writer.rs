@@ -51,7 +51,7 @@ impl<W: Write> SSTableWriter<'_, W> {
         buf.put_u64(len as u64);
 
         self.writer.write(&buf.freeze()).unwrap();
-        self.writer.flush();
+        self.writer.flush().unwrap();
     }
 
     fn create_data_block_if_necessary(&mut self, key_len: u16, key: &Bytes) {

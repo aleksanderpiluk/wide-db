@@ -6,7 +6,7 @@ use wdb_storage_engine::{RowMutation, RowMutationOp, StorageEngine, Timestamp};
 use crate::utils::MemoryPersistance;
 
 #[test]
-fn in_memory_test() {
+fn flush_scan_test() {
     let table_name = Bytes::from("users");
     let timestamp = Some(Timestamp::from(1500000000));
 
@@ -63,58 +63,67 @@ fn in_memory_test() {
             RowMutationOp::Put { family: Bytes::from("address"), column: Bytes::from("street"), timestamp: timestamp, value: Bytes::from("Abbey Road") },
         ]
     });
-    
-    let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user2"), None);
-    println!("{:#?}", row_result);
 
-
-    storage_engine.execute_row_mutation(RowMutation {
-        table: table_name.clone(),
-        row: Bytes::from("user1"),
-        ops: vec![
-            RowMutationOp::DeleteCell { family: Bytes::from(""), column: Bytes::from("email"), timestamp: timestamp},
-        ]
-    });
-
-    let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user1"), None);
-    println!("{:#?}", row_result);
-
-    storage_engine.execute_row_mutation(RowMutation {
-        table: table_name.clone(),
-        row: Bytes::from("user3"),
-        ops: vec![
-            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 10)), value: Bytes::from("22") },
-            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 20)), value: Bytes::from("18") },
-            RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 30)), value: Bytes::from("10") },
-        ]
-    });
-
-    let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user3"), None);
-    println!("{:?}", row_result);
-
-    storage_engine.execute_row_mutation(RowMutation {
-        table: table_name.clone(),
-        row: Bytes::from("user3"),
-        ops: vec![
-            RowMutationOp::DeleteColumn { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 30)) }
-        ]
-    });
-
-    let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user3"), None);
-    println!("{:?}", row_result);
-
-    storage_engine.execute_row_mutation(RowMutation {
-        table: table_name.clone(),
-        row: Bytes::from("user2"),
-        ops: vec![
-            RowMutationOp::DeleteFamily { family: Bytes::from("address"), timestamp  }
-        ]
-    });
-
-    let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user2"), None);
-    println!("{:?}", row_result);
+    {
+        let mut table = storage_engine.get_table(table_name.clone()).unwrap();
+        table.flush_memtable();
+    }
 
     println!("-- FULL SCAN --");
     let result = storage_engine.scan(table_name.clone(), None, None, None);
     println!("{:?}", result);
+    
+    // let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user2"), None);
+    // println!("{:#?}", row_result);
+
+
+    // storage_engine.execute_row_mutation(RowMutation {
+    //     table: table_name.clone(),
+    //     row: Bytes::from("user1"),
+    //     ops: vec![
+    //         RowMutationOp::DeleteCell { family: Bytes::from(""), column: Bytes::from("email"), timestamp: timestamp},
+    //     ]
+    // });
+
+    // let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user1"), None);
+    // println!("{:#?}", row_result);
+
+    // storage_engine.execute_row_mutation(RowMutation {
+    //     table: table_name.clone(),
+    //     row: Bytes::from("user3"),
+    //     ops: vec![
+    //         RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 10)), value: Bytes::from("22") },
+    //         RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 20)), value: Bytes::from("18") },
+    //         RowMutationOp::Put { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 30)), value: Bytes::from("10") },
+    //     ]
+    // });
+
+    // let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user3"), None);
+    // println!("{:?}", row_result);
+
+    // storage_engine.execute_row_mutation(RowMutation {
+    //     table: table_name.clone(),
+    //     row: Bytes::from("user3"),
+    //     ops: vec![
+    //         RowMutationOp::DeleteColumn { family: Bytes::from("account"), column: Bytes::from("tokens"), timestamp: Some(Timestamp::from(1500000000 + 30)) }
+    //     ]
+    // });
+
+    // let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user3"), None);
+    // println!("{:?}", row_result);
+
+    // storage_engine.execute_row_mutation(RowMutation {
+    //     table: table_name.clone(),
+    //     row: Bytes::from("user2"),
+    //     ops: vec![
+    //         RowMutationOp::DeleteFamily { family: Bytes::from("address"), timestamp  }
+    //     ]
+    // });
+
+    // let row_result = storage_engine.read_row(table_name.clone(), Bytes::from("user2"), None);
+    // println!("{:?}", row_result);
+
+    // println!("-- FULL SCAN --");
+    // let result = storage_engine.scan(table_name.clone(), None, None, None);
+    // println!("{:?}", result);
 }

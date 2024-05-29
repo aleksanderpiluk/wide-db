@@ -2,7 +2,7 @@ use bytes::Bytes;
 use dashmap::mapref::one::{Ref, RefMut};
 use log::debug;
 
-use crate::{cell::CellType, key_value::KeyValue, utils::hashed_bytes::HashedBytes, RowMutationOp, Table, TableFamily, Timestamp};
+use crate::{cell::CellType, key_value::KeyValue, utils::hashed_bytes::HashedBytes, PersistanceLayer, RowMutationOp, Table, TableFamily, Timestamp};
 
 pub struct RowMutationExecutor {}
 
@@ -75,28 +75,28 @@ impl RowMutationExecutor {
         let ts = Timestamp::ensure_timestamp(ts);
         let mut cell = KeyValue::new(row.bytes_as_ref(), &family.get_name(), &column, ts, &CellType::Put, &value);
         cell.set_mvcc_id(mvcc_id);
-        table.insert_kv(cell);
+        family.insert_kv(cell);
     }
 
     fn unsafe_delete_cell(table: &Table, family: &TableFamily, row: HashedBytes, column: Bytes, ts: Option<Timestamp>, mvcc_id: u64) {
         let ts = Timestamp::ensure_timestamp(ts);
         let mut cell = KeyValue::new(row.bytes_as_ref(), &family.get_name(), &column, ts, &CellType::Delete, &Bytes::from(""));
         cell.set_mvcc_id(mvcc_id);
-        table.insert_kv(cell);
+        family.insert_kv(cell);
     }
 
     fn unsafe_delete_column(table: &Table, family: &TableFamily, row: HashedBytes, column: Bytes, ts: Option<Timestamp>, mvcc_id: u64) {
         let ts = Timestamp::ensure_timestamp(ts);
         let mut cell = KeyValue::new(row.bytes_as_ref(), &family.get_name(), &column, ts, &CellType::DeleteColumn, &Bytes::from(""));
         cell.set_mvcc_id(mvcc_id);
-        table.insert_kv(cell);
+        family.insert_kv(cell);
     } 
 
     fn unsafe_delete_family(table: &Table, family: &TableFamily, row: HashedBytes, ts: Option<Timestamp>, mvcc_id: u64) {
         let ts = Timestamp::ensure_timestamp(ts);   
         let mut cell = KeyValue::new(row.bytes_as_ref(), &family.get_name(), &Bytes::from_static(b""), ts, &CellType::DeleteFamily, &Bytes::from_static(b""));
         cell.set_mvcc_id(mvcc_id);
-        table.insert_kv(cell);
+        family.insert_kv(cell);
     }
 }
 

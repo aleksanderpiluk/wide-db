@@ -3,21 +3,25 @@ use std::sync::{Arc, Mutex};
 use bytes::Bytes;
 use dashmap::{mapref::one::RefMut, DashMap};
 
-use crate::{ flush_agent::FlushAgent, key_value::KeyValue, kv_scanner::KVScanner, row_filter::RowFilter, row_mutation::RowMutationExecutor, row_result::RowResult, table::Table, utils::{hashed_bytes::HashedBytes, Timestamp}, RowMutation, RowMutationOp, TableFamily};
+use crate::{ flush_agent::FlushAgent, key_value::KeyValue, row_filter::RowFilter, row_mutation::RowMutationExecutor, row_result::RowResult, table::Table, utils::{hashed_bytes::HashedBytes, Timestamp}, PersistanceLayer, RowMutation, RowMutationOp, TableFamily};
 
-pub struct StorageEngine {
+pub struct StorageEngine<P: PersistanceLayer> {
     tables: DashMap<u64, Table>,
-    tables_lock: Mutex<()>,    
+    tables_lock: Mutex<()>,
+    persistance_layer: P,
 }
 
-impl StorageEngine {
-    pub fn empty() -> Arc<StorageEngine> {
+impl<P: PersistanceLayer> StorageEngine<P> {
+    pub fn empty(persistance_layer: P, flush_agent: bool) -> Arc<StorageEngine<P>> {
         let engine = Arc::new(StorageEngine {
             tables: DashMap::new(),
             tables_lock: Mutex::new(()),
+            persistance_layer,
         });
 
-        FlushAgent::new(engine.clone());
+        if flush_agent {
+            FlushAgent::new(engine.clone());
+        }
 
         engine
     }    
@@ -55,7 +59,7 @@ impl StorageEngine {
         let row = HashedBytes::from_bytes(mutation.row.clone());
         
         RowMutationExecutor::unsafe_execute_row_mutation(table, row, mutation.ops);
-    }
+    }  
 
     pub fn read_row(&self, table: Bytes, row: Bytes, filter: Option<&dyn RowFilter>) -> RowResult {
         let table: RefMut<u64, Table, std::hash::RandomState> = self.get_table(table.clone()).unwrap();
@@ -78,5 +82,9 @@ impl StorageEngine {
 
         let iter = table.scan(start, end);
         iter.collect::<Vec<KeyValue>>()
+    }
+
+    pub fn get_persitance_layer(&self) -> &P {
+        &self.persistance_layer
     }
 }

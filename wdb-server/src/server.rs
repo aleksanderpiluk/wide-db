@@ -1,16 +1,16 @@
 use std::sync::{Arc, Mutex};
 
-use wdb_storage_engine::StorageEngine;
+use wdb_storage_engine::{PersistanceLayer, StorageEngine};
 
 use crate::server_ctx::ServerCtx;
 
-pub struct Server {
-    storage_engine: Arc<StorageEngine>,
-    ctx: ServerCtx,
+pub struct Server<P: PersistanceLayer> {
+    storage_engine: Arc<StorageEngine<P>>,
+    ctx: ServerCtx<P>,
 }
 
-impl Server {
-    pub fn init(storage_engine: Arc<StorageEngine>) -> Server {
+impl<P: PersistanceLayer> Server<P> {
+    pub fn init(storage_engine: Arc<StorageEngine<P>>) -> Server<P> {
         let ctx = ServerCtx {
             storage_engine: storage_engine.clone(),
         };
@@ -21,7 +21,7 @@ impl Server {
         }
     }
 
-    pub fn get_ctx(&self) -> &ServerCtx {
+    pub fn get_ctx(&self) -> &ServerCtx<P> {
         &self.ctx
     }
 }
