@@ -3,7 +3,7 @@ use std::{ops::{Deref, RangeBounds}, sync::{atomic::{AtomicU64, AtomicUsize, Ord
 use arc_swap::ArcSwap;
 use bytes::Bytes;
 use crossbeam_skiplist::{set::{Entry, Range}, SkipSet};
-use itertools::kmerge;
+use itertools::{kmerge, Itertools};
 use uuid::Uuid;
 
 use crate::{key_value::KeyValue, kv_scanner::KVScanner, Cell};
@@ -37,6 +37,7 @@ impl Memtable {
         self.snapshot.store(to_flush.clone());
         self.activeSize.store(0, Ordering::Relaxed);
         self.active.store(new_active);
+        self.snapshot.store(Arc::new(Segment::new()));
 
         to_flush
     }
@@ -45,7 +46,7 @@ impl Memtable {
         self.activeSize.load(Ordering::Relaxed)
     }
 
-    pub fn scan<'a>(&self, start: Option<KeyValue>, end: Option<KeyValue>, read_point: Option<u64>) -> impl Iterator<Item = KeyValue> + '_ {
+    pub fn scan<'a>(&self, start: Option<KeyValue>, end: Option<KeyValue>, read_point: Option<u64>) -> Vec<KeyValue> {
         let active_segment = self.active.load_full();
         let snapshot_segment = self.snapshot.load_full();
 
@@ -69,7 +70,7 @@ impl Memtable {
         kmerge(vec![
             get_iter(active_segment, start.clone(), end.clone(), read_point),
             get_iter(snapshot_segment, start, end, read_point)
-        ])
+        ]).collect_vec()
     }
 }
 

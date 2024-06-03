@@ -3,7 +3,7 @@ use std::sync::Arc;
 use log::{debug, info};
 use tokio::time::{sleep, Duration};
 
-use crate::{storage_engine, PersistanceLayer, StorageEngine};
+use crate::{PersistanceLayer, StorageEngine};
 
 pub struct FlushAgent {
 

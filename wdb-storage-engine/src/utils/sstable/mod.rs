@@ -1,7 +1,11 @@
 mod sstable;
 mod sstable_writer;
+mod sstable_reader;
+mod data_block;
 
 pub use sstable_writer::SSTableWriter;
+pub use sstable::SSTable;
+pub use sstable_reader::SSTableReader;
 
 #[cfg(test)]
 mod tests {

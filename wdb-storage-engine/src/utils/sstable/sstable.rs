@@ -1,7 +1,13 @@
-use std::io::{Read, Seek, SeekFrom};
+use std::{io::{Read, Seek, SeekFrom}, iter, path::PathBuf};
 
 use bytes::Bytes;
+use crossbeam_skiplist::{map::Entry, SkipMap};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+
+use crate::key_value::KeyValue;
+
+use super::{data_block::DataBlock, sstable_reader::SSTableReader};
 
 #[derive(Serialize, Deserialize)]
 pub struct SSTableFooter {
@@ -26,72 +32,89 @@ pub struct SSTableRow {
     pub data: Bytes,
 }
 
-pub struct SSTable<'a, R: Read + Seek> {
-    reader: &'a mut R,
-    footer: SSTableFooter,
-    indexes: Vec::<SSTableIndex>,
-    curr: u64,
+pub struct SSTable {
+    table: Bytes, 
+    family: Bytes, 
+    segment: Bytes,
+    index: SkipMap<KeyValue, DataBlock>,
 }
 
-impl<R: Read + Seek> SSTable<'_, R> {
-    pub fn new(r: &mut R) -> SSTable<R> {
-        let footer = SSTable::read_footer(r);
-        
-        r.seek(SeekFrom::Start(footer.index_pos)).unwrap();
-        
-        let mut buf = vec![0u8; footer.index_size as usize];
-        r.read_exact(&mut buf).unwrap();
-
-        let indexes: Vec<SSTableIndex> = bincode::deserialize(&buf).expect("Failed to deserialize indexes");
-
-        SSTable { reader: r, footer, indexes, curr: 0 }
+impl SSTable {
+    pub fn new(table: &Bytes, family: &Bytes, segment: &Bytes, index: SkipMap<KeyValue, DataBlock>) -> SSTable {
+        SSTable { table: table.clone(), family: family.clone(), segment: segment.clone(), index }
     }
 
-    // pub fn read_row(&mut self, index: &SSTableIndex) -> SSTableRow {
-    //     let mut buf = BytesMut::with_capacity(index.length as usize);
-    //     self.reader.seek(SeekFrom::Start(index.offset)).unwrap();
-    //     self.reader.read_exact(&mut buf).expect("Failed to read file data");
-
-    //     SSTableRow { 
-    //         row: index.row.clone(),
-    //         column_name: index.column_name.clone(),
-    //         timestamp: index.timestamp, 
-    //         data: buf.freeze()
-    //     }
-    // }
-
-    fn read_footer(reader: &mut R) -> SSTableFooter {
-        reader.seek(SeekFrom::End(-16)).unwrap();
-        let mut buf = [0u8; 16];
-        reader.read_exact(&mut buf).unwrap();
+    pub fn read<R: Read + Seek>(table: &Bytes, family: &Bytes, segment: &Bytes, r: R) -> SSTable {
+        let mut reader = SSTableReader::new(r);
         
-        let footer: SSTableFooter = bincode::deserialize(&buf).expect("Failed to deserialize footer");
-        footer
+        let index = reader.read_index();
+        SSTable::new(table, family, segment, index)
+    }
+
+    pub fn get_blocks(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> Vec<DataBlock> {
+        let entry = match start {
+            Some(start) => {
+                self.index.lower_bound(std::ops::Bound::Included(&start))  
+            },
+            None => {
+                self.index.front()
+            },
+        };
+
+        let iter = SSTableIter::new(entry);
+        iter.map(|entry| {
+            entry.value().clone()
+        }).collect_vec()
+    }
+
+    pub fn get_table(&self) -> &Bytes {
+        &self.table
+    }
+
+    pub fn get_family(&self) -> &Bytes {
+        &self.family
+    }
+
+    pub fn get_segment(&self) -> &Bytes {
+        &self.segment
     }
 }
 
-impl<R: Read + Seek> Iterator for SSTable<'_, R> {
-    type Item = SSTableRow;
+impl Clone for SSTable {
+    fn clone(&self) -> Self {
+        SSTable { 
+            table: self.table.clone(), 
+            family: self.family.clone(), 
+            segment: self.segment.clone(), 
+            index: SkipMap::from_iter(
+                self.index.iter().map(|entry| { 
+                    (entry.key().clone(), entry.value().clone()) 
+                })
+            )
+        }
+    }
+}
+
+struct SSTableIter<'a> {
+    entry: Option<Entry<'a, KeyValue, DataBlock>>,
+}
+
+impl<'a> SSTableIter<'a> {
+    fn new(entry: Option<Entry<'a, KeyValue, DataBlock>>) -> SSTableIter<'a> {
+        SSTableIter { entry }
+    }
+}
+
+impl<'a> Iterator for SSTableIter<'a> {
+    type Item = Entry<'a, KeyValue, DataBlock>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current = self.curr as usize;
-        if current >= self.indexes.len() {
-            return None;
+        match self.entry.clone() {
+            None => None,
+            Some(entry) => {
+                self.entry = entry.next();
+                Some(entry)
+            },
         }
-
-        self.curr += 1;
-
-        let index = self.indexes.get(current).unwrap();
-        let mut buf = vec![0u8; index.length as usize];
-        self.reader.seek(SeekFrom::Start(index.offset)).unwrap();
-        self.reader.read_exact(&mut buf).expect("Failed to read file data");
-
-        
-        Some(SSTableRow { 
-            row: index.row.clone(),
-            column_name: index.column_name.clone(),
-            timestamp: index.timestamp, 
-            data: Bytes::from(buf)
-        })
     }
 }

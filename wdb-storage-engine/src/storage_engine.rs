@@ -13,8 +13,23 @@ pub struct StorageEngine<P: PersistanceLayer> {
 
 impl<P: PersistanceLayer> StorageEngine<P> {
     pub fn empty(persistance_layer: P, flush_agent: bool) -> Arc<StorageEngine<P>> {
+        let tables_data = persistance_layer.get_tables_list();
+        let tables = DashMap::new();
+        for table_data in tables_data {
+            let name = HashedBytes::from_bytes(table_data.0);
+            let id = *name.hash_as_ref();
+            tables.insert(
+                id, 
+                Table::new_from_families_vec(
+                    id, 
+                    name.bytes_as_ref().clone(), 
+                    table_data.1
+                )
+            );
+        }
+
         let engine = Arc::new(StorageEngine {
-            tables: DashMap::new(),
+            tables,
             tables_lock: Mutex::new(()),
             persistance_layer,
         });
@@ -69,7 +84,7 @@ impl<P: PersistanceLayer> StorageEngine<P> {
         let start = KeyValue::new_first_on_row(row.bytes_as_ref());
         let end = KeyValue::new_last_on_row(row.bytes_as_ref());
 
-        let iter = table.scan(Some(start), Some(end));
+        let iter = table.scan(self.get_persitance_layer(), Some(start), Some(end));
         
         return RowResult { 
             row: row.bytes_as_ref().clone(), 
@@ -80,7 +95,7 @@ impl<P: PersistanceLayer> StorageEngine<P> {
     pub fn scan(&self, table: Bytes, start: Option<KeyValue>, end: Option<KeyValue>, filter: Option<&dyn RowFilter>) -> Vec<KeyValue> {
         let table: RefMut<u64, Table, std::hash::RandomState> = self.get_table(table.clone()).unwrap();
 
-        let iter = table.scan(start, end);
+        let iter = table.scan(self.get_persitance_layer(), start, end);
         iter.collect::<Vec<KeyValue>>()
     }
 

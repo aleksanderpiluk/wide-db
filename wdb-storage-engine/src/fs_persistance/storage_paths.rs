@@ -18,16 +18,4 @@ impl StoragePaths {
         let family_name = std::str::from_utf8(&family_name.clone()).unwrap().to_string();
         StoragePaths::table_dir(table_name).join(family_name + ".family/")
     }
-
-    // pub fn root_file() -> PathBuf {
-    //     StoragePaths::base().join(".db")        
-    // }
-
-    // pub fn table_metadata(id: &String) -> PathBuf {
-    //     StoragePaths::base().join(id).join(".meta")
-    // }
-
-    // pub fn table_data() -> PathBuf {
-    //     StoragePaths::base().join("table_data/")
-    // }
 }

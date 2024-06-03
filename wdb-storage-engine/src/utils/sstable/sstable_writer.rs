@@ -1,8 +1,11 @@
 use std::{cell::RefCell, io::{Read, Write}, rc::Rc};
 
 use bytes::{BufMut, Bytes, BytesMut};
+use crossbeam_skiplist::SkipMap;
 
 use crate::{cell::Cell, key_value::KeyValue};
+
+use super::data_block::DataBlock;
 
 pub struct SSTableWriter<'a, W:Write> {
     writer: &'a mut W,
@@ -32,7 +35,9 @@ impl<W: Write> SSTableWriter<'_, W> {
         self.curr_data_block.as_ref().unwrap().borrow_mut().data_size += len;
     }
 
-    pub fn end(&mut self) {
+    pub fn end(&mut self) -> SkipMap<KeyValue, DataBlock> {
+        let index: SkipMap<KeyValue, DataBlock> = SkipMap::new();
+
         let mut buf = BytesMut::new();
         for block in self.data_blocks.iter() {
             let block = block.borrow_mut();
@@ -40,6 +45,7 @@ impl<W: Write> SSTableWriter<'_, W> {
             buf.put_u64(block.data_size as u64);
             buf.put_u16(block.key_len);
             buf.put(&block.key[..]);
+            index.insert(KeyValue::new_from_key(block.key_len, block.key.clone()), block.clone());
         }
         
         let index_pos = self.offset;
@@ -52,6 +58,8 @@ impl<W: Write> SSTableWriter<'_, W> {
 
         self.writer.write(&buf.freeze()).unwrap();
         self.writer.flush().unwrap();
+
+        index
     }
 
     fn create_data_block_if_necessary(&mut self, key_len: u16, key: &Bytes) {
@@ -70,11 +78,4 @@ impl<W: Write> SSTableWriter<'_, W> {
         self.curr_data_block = Some(db.clone());
         self.data_blocks.push(db);
     }
-}
-
-struct DataBlock {
-    pub offset: usize,
-    pub data_size: usize,
-    pub key_len: u16,
-    pub key: Bytes,
 }

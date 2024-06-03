@@ -5,7 +5,7 @@ use dashmap::{iter::Iter, mapref::one::Ref, DashMap};
 use itertools::kmerge;
 use log::debug;
 
-use crate::{cell::{Cell, CellType}, delete_tracker::DeleteTracker, key_value::KeyValue, kv_scanner::KVScanner, memtable::Memtable, row_lock::RowLockContext, storage_engine, utils::hashed_bytes::HashedBytes, PersistanceLayer, StorageEngine};
+use crate::{cell::{Cell, CellType}, delete_tracker::DeleteTracker, key_value::KeyValue, kv_scanner::KVScanner, memtable::Memtable, row_lock::RowLockContext, storage_engine, utils::{hashed_bytes::HashedBytes, sstable::SSTable}, PersistanceLayer, StorageEngine};
 
 use super::{table_family::TableFamily};
 
@@ -26,6 +26,30 @@ impl Table {
             id,
             name,
             families: DashMap::new(),
+            row_locks: DashMap::new(),
+            families_lock: Mutex::new(()),
+            mvcc_read_point: AtomicU64::new(0),
+            mvcc_write_point: AtomicU64::new(0),
+            mvcc_write_queue: Mutex::new(LinkedList::new()),
+        }
+    }
+
+    pub fn new_from_families_vec(id: u64, name: Bytes, families_data: Vec<(Bytes, Vec<SSTable>)>) -> Table {
+        let families = DashMap::new();
+        for family_data in families_data {
+            let name = HashedBytes::from_bytes(family_data.0);
+            let id = *name.hash_as_ref();
+            
+            families.insert(
+                id, 
+                TableFamily::new_from_segments_vec(id, name.bytes_as_ref().clone(), family_data.1)
+            );
+        }
+
+        Table {
+            id,
+            name,
+            families,
             row_locks: DashMap::new(),
             families_lock: Mutex::new(()),
             mvcc_read_point: AtomicU64::new(0),
@@ -113,12 +137,12 @@ impl Table {
         debug!("MVCC new read point: {}", read_point);
     }
 
-    pub fn scan(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> impl Iterator<Item = KeyValue> + '_ {
+    pub fn scan<P: PersistanceLayer>(&self, persitance: &P, start: Option<KeyValue>, end: Option<KeyValue>) -> impl Iterator<Item = KeyValue> + '_ {
         let read_point = self.mvcc_get_read_point();
 
         let mut iters = vec![];
         for family in self.families.iter() {
-            iters.push(family.scan(start.clone(), end.clone(), Some(read_point)).collect::<Vec<KeyValue>>());
+            iters.push(family.scan(persitance, start.clone(), end.clone(), Some(read_point)).collect::<Vec<KeyValue>>());
         }
         
         let merge_iter = kmerge(iters);

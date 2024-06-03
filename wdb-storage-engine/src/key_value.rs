@@ -80,6 +80,27 @@ impl KeyValue {
         KeyValue { buffer: buffer.freeze(), mvcc_id: 0 }
     }
 
+    pub fn new_from_key(key_len: u16, key: Bytes) -> KeyValue {
+        let mut buffer = BytesMut::new();
+
+        buffer.put_u16(key_len as u16);
+        buffer.put_u64(0);
+        buffer.put(key);
+
+        KeyValue { buffer: buffer.freeze(), mvcc_id: 0 }
+    }
+
+    pub fn new_from_kv_bytes(key_len: u16, key: Vec<u8>, val_len: u64, val: Vec<u8>) -> KeyValue {
+        let mut buffer = BytesMut::new();
+
+        buffer.put_u16(key_len as u16);
+        buffer.put_u64(val_len);
+        buffer.put(key.as_slice());
+        buffer.put(val.as_slice());
+
+        KeyValue { buffer: buffer.freeze(), mvcc_id: 0 }
+    }
+
     pub fn as_bytes(&self) -> Bytes {
         self.buffer.clone()
     }

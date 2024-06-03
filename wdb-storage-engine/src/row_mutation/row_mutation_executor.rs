@@ -100,5 +100,4 @@ impl RowMutationExecutor {
     }
 }
 
-#[derive(Debug)]
 struct RowMutationOpParsed<'a>(Ref<'a, u64, TableFamily, std::hash::RandomState>, RowMutationOp);
