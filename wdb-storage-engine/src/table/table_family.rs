@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{sync::Arc, vec::IntoIter};
 
 use arc_swap::{access::Access, ArcSwap};
 use bytes::Bytes;
 use itertools::{kmerge, Itertools};
 
-use crate::{key_value::KeyValue, kv_scanner::ScanIterator, memtable::Memtable, utils::sstable::{SSTable, SSTableReader, SSTableWriter}, PersistanceLayer};
+use crate::{key_value::KeyValue, memtable::Memtable, utils::sstable::{SSTable, SSTableReader, SSTableWriter}, Cell, PersistanceLayer};
 
 pub struct TableFamily {
     id: u64,
@@ -46,11 +46,12 @@ impl TableFamily {
         });
 
         let index = sstable_writer.end();
+        let max_mvcc = sstable_writer.get_max_mvcc_id();
 
         let mut sstables: Vec<SSTable> = self.sstables.load_full().iter().map(|ss_table| {
             ss_table.clone()
         }).collect_vec();
-        sstables.push(SSTable::new(table_name, &self.get_name(), segment_name, index));
+        sstables.push(SSTable::new(table_name, &self.get_name(), segment_name, index, max_mvcc));
         self.sstables.swap(Arc::new(sstables));
     }
 
@@ -63,10 +64,69 @@ impl TableFamily {
             let blocks = sstable.get_blocks(start.clone(), end.clone());
             
             let mut reader = SSTableReader::new(persistance.get_segment_read(sstable.get_table(), sstable.get_family(), sstable.get_segment()));
-            iters.push(reader.read_blocks(blocks).into_iter());
+            let iter = reader
+                .read_blocks(blocks)
+                .into_iter()
+                .skip_while(|kv| { match &start {
+                    None => false,
+                    Some(start) => kv < start,
+                }})
+                .take_while(|kv| {
+                    match &end {
+                        None => true,
+                        Some(end) => kv <= end,
+                    }
+                }).collect_vec().into_iter();
+            iters.push(iter);
         }
 
-        kmerge(iters).map(|kv| {kv.clone()})
+        let iter = kmerge(iters).collect_vec().into_iter();
+        ScanIterator::new(iter, read_point)
     }
     
+}
+
+struct ScanIterator {
+    iter: IntoIter<KeyValue>,
+    last_key: Option<Vec<u8>>,
+    read_point: Option<u64>
+}
+
+impl ScanIterator {
+    fn new(iter: IntoIter<KeyValue>, read_point: Option<u64>) -> ScanIterator {
+        ScanIterator {
+            iter,
+            last_key: None,
+            read_point,
+        }
+    }
+}
+
+impl<'a> Iterator for ScanIterator {
+    type Item = KeyValue;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(kv) = self.iter.next() {
+            // println!("{:?}", kv.get_key());
+            // Check if MVCC enabled
+            if let Some(point) = self.read_point {
+                if kv.get_mvcc_id() > point {
+                    continue;
+                }
+            }
+
+            let key_vec = kv.get_key().to_vec();
+            if let Some(last_key) = &self.last_key {
+                if last_key.eq(&key_vec) {
+                    continue;
+                }
+            }
+
+            self.last_key = Some(key_vec);
+            // println!("PASS");
+            return Some(kv.clone())
+        }
+
+        None
+    }
 }

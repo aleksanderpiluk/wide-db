@@ -12,6 +12,7 @@ pub struct SSTableReader<R: Read + Seek> {
     r: R,
     index_pos: u64,
     index_len: u64,
+    max_mvcc: u64,
 }
 
 
@@ -21,8 +22,8 @@ where
     {
 
     pub fn new(mut r: R) -> SSTableReader<R> {
-        r.seek(SeekFrom::End(-3 * 8)).unwrap();
-        let mut buf = [0u8; 3 * 8];
+        r.seek(SeekFrom::End(-4 * 8)).unwrap();
+        let mut buf = [0u8; 4 * 8];
         r.read_exact(&mut buf).unwrap();
         let mut buf = Bytes::from(buf.to_vec());
         if buf.get_u64() != 0xDB1234AB {
@@ -30,8 +31,13 @@ where
         }
         let index_pos = buf.get_u64();
         let index_len = buf.get_u64();
+        let max_mvcc = buf.get_u64();
 
-        SSTableReader { r, index_pos, index_len }
+        SSTableReader { r, index_pos, index_len, max_mvcc }
+    }
+
+    pub fn max_mvcc_id(&self) -> u64 {
+        self.max_mvcc
     }
 
     pub fn read_index(&mut self) -> SkipMap<KeyValue, DataBlock>{
@@ -61,7 +67,7 @@ where
 
     pub fn read_blocks(&mut self, blocks: Vec<DataBlock>) -> Vec<KeyValue> {
         blocks.iter().map(|block| {
-            self.r.seek(SeekFrom::Start(block.get_offset() as u64));
+            self.r.seek(SeekFrom::Start(block.get_offset() as u64)).unwrap();
             let mut buf = vec![0u8; block.get_data_size()];
             self.r.read_exact(&mut buf).unwrap();
 
@@ -74,7 +80,9 @@ where
                 buf.advance(key_len as usize);
                 let val = buf.get(..val_len as usize).unwrap().to_vec();
                 buf.advance(val_len as usize);
-                let kv = KeyValue::new_from_kv_bytes(key_len, key, val_len, val);
+                let mvcc_id = buf.get_u64();
+                let mut kv = KeyValue::new_from_kv_bytes(key_len, key, val_len, val);
+                kv.set_mvcc_id(mvcc_id);
                 results.push(kv);
             }
 

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::{self, read_dir}, io::{Cursor, Read, Seek, Write}};
+use std::{cmp::max, collections::HashMap, fs::{self, read_dir}, io::{Cursor, Read, Seek, Write}};
 use bytes::Bytes;
 use log::debug;
 
@@ -40,7 +40,7 @@ impl PersistanceLayer for FSPersistance {
         }
     }
 
-    fn get_tables_list(&self) -> Vec<(Bytes, Vec<(Bytes, Vec<SSTable>)>)> {
+    fn get_tables_list(&self) -> Vec<(Bytes, u64, Vec<(Bytes, Vec<SSTable>)>)> {
         let paths = read_dir(StoragePaths::base()).unwrap();
 
         let mut results = vec![];
@@ -51,6 +51,7 @@ impl PersistanceLayer for FSPersistance {
             if name.ends_with(".table") {
                 let table_name = Bytes::from(name.strip_suffix(".table").unwrap().to_string());
                 let mut families = vec![];
+                let mut max_mvcc: u64 = 0;
 
                 let paths = read_dir(path).unwrap();
                 for path in paths {
@@ -68,6 +69,7 @@ impl PersistanceLayer for FSPersistance {
                             
                             let r = fs::File::open(path).unwrap();
                             let segment = SSTable::read(&table_name, &family_name, &name, r);
+                            max_mvcc = max(max_mvcc, segment.get_max_mvcc_id());
                             segments.push(segment);
                         }
 
@@ -75,7 +77,7 @@ impl PersistanceLayer for FSPersistance {
                     }
                 }
 
-                results.push((table_name, families));
+                results.push((table_name, max_mvcc, families));
             }
         }
 

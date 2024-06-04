@@ -102,7 +102,11 @@ impl KeyValue {
     }
 
     pub fn as_bytes(&self) -> Bytes {
-        self.buffer.clone()
+        let mut buf = BytesMut::new();
+        buf.put(&self.buffer[..]);
+        buf.put_u64(self.mvcc_id);
+
+        buf.freeze()
     }
 
     pub fn set_mvcc_id(&mut self, mvcc_id: u64) {

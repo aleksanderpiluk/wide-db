@@ -23,7 +23,8 @@ impl<P: PersistanceLayer> StorageEngine<P> {
                 Table::new_from_families_vec(
                     id, 
                     name.bytes_as_ref().clone(), 
-                    table_data.1
+                    table_data.1,
+                    table_data.2
                 )
             );
         }

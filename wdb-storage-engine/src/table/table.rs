@@ -34,7 +34,7 @@ impl Table {
         }
     }
 
-    pub fn new_from_families_vec(id: u64, name: Bytes, families_data: Vec<(Bytes, Vec<SSTable>)>) -> Table {
+    pub fn new_from_families_vec(id: u64, name: Bytes, mvcc_id: u64, families_data: Vec<(Bytes, Vec<SSTable>)>) -> Table {
         let families = DashMap::new();
         for family_data in families_data {
             let name = HashedBytes::from_bytes(family_data.0);
@@ -52,8 +52,8 @@ impl Table {
             families,
             row_locks: DashMap::new(),
             families_lock: Mutex::new(()),
-            mvcc_read_point: AtomicU64::new(0),
-            mvcc_write_point: AtomicU64::new(0),
+            mvcc_read_point: AtomicU64::new(mvcc_id),
+            mvcc_write_point: AtomicU64::new(mvcc_id),
             mvcc_write_queue: Mutex::new(LinkedList::new()),
         }
     }

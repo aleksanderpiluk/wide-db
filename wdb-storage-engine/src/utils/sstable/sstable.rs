@@ -37,18 +37,23 @@ pub struct SSTable {
     family: Bytes, 
     segment: Bytes,
     index: SkipMap<KeyValue, DataBlock>,
+    max_mvcc_id: u64,
 }
 
 impl SSTable {
-    pub fn new(table: &Bytes, family: &Bytes, segment: &Bytes, index: SkipMap<KeyValue, DataBlock>) -> SSTable {
-        SSTable { table: table.clone(), family: family.clone(), segment: segment.clone(), index }
+    pub fn new(table: &Bytes, family: &Bytes, segment: &Bytes, index: SkipMap<KeyValue, DataBlock>, max_mvcc_id: u64,) -> SSTable {
+        SSTable { table: table.clone(), family: family.clone(), segment: segment.clone(), index, max_mvcc_id }
     }
 
     pub fn read<R: Read + Seek>(table: &Bytes, family: &Bytes, segment: &Bytes, r: R) -> SSTable {
         let mut reader = SSTableReader::new(r);
         
         let index = reader.read_index();
-        SSTable::new(table, family, segment, index)
+        SSTable::new(table, family, segment, index, reader.max_mvcc_id())
+    }
+
+    pub fn get_max_mvcc_id(&self) -> u64 {
+        self.max_mvcc_id
     }
 
     pub fn get_blocks(&self, start: Option<KeyValue>, end: Option<KeyValue>) -> Vec<DataBlock> {
@@ -61,7 +66,7 @@ impl SSTable {
             },
         };
 
-        let iter = SSTableIter::new(entry);
+        let iter = SSTableIter::new(entry, end);
         iter.map(|entry| {
             entry.value().clone()
         }).collect_vec()
@@ -90,18 +95,20 @@ impl Clone for SSTable {
                 self.index.iter().map(|entry| { 
                     (entry.key().clone(), entry.value().clone()) 
                 })
-            )
+            ),
+            max_mvcc_id: self.max_mvcc_id.clone(),
         }
     }
 }
 
 struct SSTableIter<'a> {
     entry: Option<Entry<'a, KeyValue, DataBlock>>,
+    end: Option<KeyValue>,
 }
 
 impl<'a> SSTableIter<'a> {
-    fn new(entry: Option<Entry<'a, KeyValue, DataBlock>>) -> SSTableIter<'a> {
-        SSTableIter { entry }
+    fn new(entry: Option<Entry<'a, KeyValue, DataBlock>>, end: Option<KeyValue>) -> SSTableIter<'a> {
+        SSTableIter { entry, end }
     }
 }
 
@@ -112,6 +119,12 @@ impl<'a> Iterator for SSTableIter<'a> {
         match self.entry.clone() {
             None => None,
             Some(entry) => {
+                if let Some(end) = &self.end {
+                    if entry.key() > end {
+                        return None;
+                    }
+                }
+
                 self.entry = entry.next();
                 Some(entry)
             },

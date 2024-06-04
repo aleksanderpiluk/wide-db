@@ -1,4 +1,4 @@
-use std::{cell::RefCell, io::{Read, Write}, rc::Rc};
+use std::{cell::RefCell, cmp::max, io::{Read, Write}, rc::Rc};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use crossbeam_skiplist::SkipMap;
@@ -10,6 +10,7 @@ use super::data_block::DataBlock;
 pub struct SSTableWriter<'a, W:Write> {
     writer: &'a mut W,
     offset: usize,
+    max_mvcc: u64,
     data_blocks: Vec<Rc<RefCell<DataBlock>>>,
     curr_data_block: Option<Rc<RefCell<DataBlock>>>,
 }
@@ -19,6 +20,7 @@ impl<W: Write> SSTableWriter<'_, W> {
         SSTableWriter {
             writer: w,
             offset: 0,
+            max_mvcc: 0,
             data_blocks: vec![],
             curr_data_block: None,
         }
@@ -29,6 +31,8 @@ impl<W: Write> SSTableWriter<'_, W> {
         let mut key: Vec<u8> = Vec::with_capacity(key_len as usize);
         key.extend_from_slice(kv.get_key());
         self.create_data_block_if_necessary(key_len, &Bytes::from(key));
+
+        self.max_mvcc = max(self.max_mvcc, kv.get_mvcc_id());
 
         let len = self.writer.write(&kv.as_bytes()).unwrap();
         self.offset += len;
@@ -55,11 +59,16 @@ impl<W: Write> SSTableWriter<'_, W> {
         buf.put_u64(0xDB1234AB); // magic number for validation check
         buf.put_u64(index_pos as u64);
         buf.put_u64(len as u64);
+        buf.put_u64(self.max_mvcc);
 
         self.writer.write(&buf.freeze()).unwrap();
         self.writer.flush().unwrap();
 
         index
+    }
+
+    pub fn get_max_mvcc_id(&self) -> u64 {
+        self.max_mvcc
     }
 
     fn create_data_block_if_necessary(&mut self, key_len: u16, key: &Bytes) {
