@@ -1,19 +1,35 @@
-mod grpc_server;
+mod server;
+mod server_ctx;
+mod grpc;
 
-use std::sync::Arc;
+use log::info;
+use tokio::signal;
+use wdb_storage_engine::{FSPersistance, StorageEngine};
 
-use wdb_engine_default::DefaultStorageEngine;
-use wdb_fs_default::DefaultFSController;
-use wdb_core::app_controller::AppController;
+use self::server::Server;
+use grpc::GrpcApi;
 
-use crate::grpc_server::GrpcServer;
+#[tokio::main]
+async fn main() {
+    env_logger::init();
 
-fn main() {
-    println!("WideDB server is starting...");
+    info!("WideDB server is starting...");
 
-    let fs = Box::new(DefaultFSController::init());
-    let storageEngine = Arc::new(DefaultStorageEngine::init());
-    
-    let mut controller = AppController::init(fs, storageEngine);
-    controller.add_module(Box::new(GrpcServer{}));
+    info!("Initializing storage engine...");
+    let storage_engine = StorageEngine::empty(FSPersistance::new(), true);
+    info!("Storage engine initialization success!");
+
+    info!("Initializing app server...");
+    let server = Server::init(storage_engine);
+    info!("App server initialization success!");
+
+    info!("Starting grpc server...");
+    GrpcApi::init(server.get_ctx().clone());
+
+    match signal::ctrl_c().await {
+        Ok(()) => {},
+        Err(err) => {
+            eprintln!("Unable to listen for shutdown signal: {}", err);
+        }
+    };
 }

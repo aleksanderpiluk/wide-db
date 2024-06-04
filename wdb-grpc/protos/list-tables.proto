@@ -1,0 +1,7 @@
+syntax = "proto3";
+package widedb;
+import "types.proto";
+
+message ListTablesResponse {
+    repeated Table tables = 1;
+}
