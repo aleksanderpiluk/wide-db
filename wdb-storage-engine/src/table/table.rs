@@ -7,7 +7,7 @@ use log::debug;
 
 use crate::{cell::{Cell, CellType}, delete_tracker::DeleteTracker, key_value::KeyValue, kv_scanner::KVScanner, memtable::Memtable, row_lock::RowLockContext, storage_engine, utils::{hashed_bytes::HashedBytes, sstable::SSTable}, PersistanceLayer, StorageEngine};
 
-use super::{table_family::TableFamily};
+use super::table_family::TableFamily;
 
 pub struct Table {
     id: u64,

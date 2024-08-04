@@ -18,8 +18,8 @@ pub async fn row_mutate<P: PersistanceLayer>(ctx: &ServerCtx<P>, request: Reques
         }
     };
     
-    let ops = request.mutations.iter().map(|mutation| {
-        mutation.mutation.clone()
+    let ops = request.mutations.into_iter().map(|mutation| {
+        mutation.mutation
     }).flatten().map(|mutation| -> Result<RowMutationOp, Status> {
         match mutation {
             wdb_grpc::wdb_grpc::mutation::Mutation::PutCell(put_cell) => {
