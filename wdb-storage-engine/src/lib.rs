@@ -1,3 +1,6 @@
+mod disk_ctl;
+mod memstore_ctl;
+
 mod storage_engine;
 mod row_lock;
 mod table;
